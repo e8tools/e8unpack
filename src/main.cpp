@@ -50,8 +50,10 @@ int usage(vector<string> &argv)
 	cout << "  -D[EFLATE]           in_filename        filename.data" << endl;
 	cout << "  -D[EFLATE] -L[IST]   listfile" << endl;
 	cout << "  -P[ARSE]             in_filename        out_dirname [block_name1 block_name2 ...]" << endl;
+	cout << "  -DE[COMPILE]         in_filename        out_dirname [block_name1 block_name2 ...]" << endl;
 	cout << "  -P[ARSE]   -L[IST]   listfile" << endl;
 	cout << "  -B[UILD] [-N[OPACK]] in_dirname         out_filename" << endl;
+	cout << "  -CO[MPILE] кириллица in_dirname         out_filename" << endl;
 	cout << "  -B[UILD] [-N[OPACK]] -L[IST] listfile" << endl;
 	cout << "  -L[IST]              listfile" << endl;
 	
@@ -200,6 +202,32 @@ int build_nopack(vector<string> &argv)
 	return ret;
 }
 
+// -DE[COMPILE]  in_filename  out_dirname  [block_name1 block_name2 ...]
+// Логика аналогична parse: разбор файла в каталог с необязательным фильтром по блокам.
+int decompile(vector<string> &argv)
+{
+	if (argv.size() < 2) {
+		return V8UNPACK_SHOW_USAGE;
+	}
+
+	vector<string> filter;
+	for (size_t i = 2; i < argv.size(); i++) {
+		if (!argv[i].empty()) {
+			filter.push_back(argv[i]);
+		}
+	}
+
+	return Parse(argv[0], argv[1], filter);
+}
+
+// -CO[MPILE]  in_dirname  out_filename
+// Логика аналогична build без опции -N[OPACK].
+int compile(vector<string> &argv)
+{
+	int ret = BuildCfFile(argv[0], argv[1], false);
+	return ret;
+}
+
 handler_t get_run_mode(const vector<string> &args, int &arg_base, bool &allow_listfile)
 {
 	if (args.size() - arg_base < 1) {
@@ -223,6 +251,10 @@ handler_t get_run_mode(const vector<string> &args, int &arg_base, bool &allow_li
 
 	if (cur_mode == "-deflate" || cur_mode == "-d") {
 		return deflate;
+	}
+	
+	if (cur_mode == "-decompile" || cur_mode == "-de") {
+		return decompile;
 	}
 
 	if (cur_mode == "-unpack" || cur_mode == "-u" || cur_mode == "-unp") {
@@ -252,6 +284,10 @@ handler_t get_run_mode(const vector<string> &args, int &arg_base, bool &allow_li
 			}
 		}
 		return dont_pack ? build_nopack : build;
+	}
+
+	if (cur_mode == "-compile" || cur_mode == "-co") {
+		return compile;
 	}
 
 	allow_listfile = false;

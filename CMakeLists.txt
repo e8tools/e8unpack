@@ -34,7 +34,41 @@ if((MSVC) AND (NOT DISABLE_SINGLE_FILE))
 endif()
 
 set(CMAKE_CXX_STANDARD 14)
-add_executable (v8unpack ${V8UNPACK_SOURCES} ${V8UNPACK_HEADERS} ${RC_FILE})
+
+find_package (Qt6 REQUIRED COMPONENTS Core)
+
+add_executable (v8unpack ${V8UNPACK_SOURCES} ${V8UNPACK_HEADERS} ${RC_FILE}
+	src/core/MetadataTypes.h
+	src/core/MetadataTypes.cpp
+	src/parser/Parse_tree.h
+	src/parser/Parse_tree.cpp
+	src/parser/NodeTypes.h
+	src/metadata/ConfigStructureReader.h
+	src/metadata/ConfigStructureReader.cpp
+	src/metadata/SectionTypes.h
+	src/metadata/SectionTypes.cpp
+	src/core/V8Container.h
+	src/core/V8FileHeader.h
+	src/core/V8Container.cpp
+	src/core/V8FileHeader.cpp
+	src/core/V8Unpacker.h
+	src/core/V8Unpacker.cpp
+	src/metadata/MetadataMap.h
+	src/metadata/MetadataMap.cpp
+	src/metadata/MetadataMapper.h
+	src/metadata/MetadataMapper.cpp
+	src/output/FileLayoutBuilder.h
+	src/output/FileLayoutBuilder.cpp
+	src/output/StructuredPacker.h
+	src/output/StructuredUnpacker.h
+	src/output/UnpackManifest.h
+	src/output/StructuredUnpacker.cpp
+	src/output/UnpackManifest.cpp)
+
+target_include_directories(v8unpack PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)	
 
 add_definitions (-DBOOST_ALL_NO_LIB)
 
@@ -52,6 +86,7 @@ endif()
 
 find_package (Boost 1.53 REQUIRED COMPONENTS filesystem system iostreams)
 
+
 include_directories (${Boost_INCLUDE_DIRS})
 target_link_libraries (v8unpack ${Boost_LIBRARIES})
 
@@ -59,3 +94,6 @@ find_package (ZLIB REQUIRED)
 
 include_directories (${ZLIB_INCLUDE_DIRS})
 target_link_libraries (v8unpack ${ZLIB_LIBRARIES})
+target_link_libraries (v8unpack Qt6::Core)   # <-- добавьте это
+
+#target_link_libraries(v8unpack PRIVATE Qt6::Core)
