@@ -54,7 +54,7 @@ static bool isGuidLike(const QString& name)
 
 bool StructuredPacker::flattenToTemp()
 {
-    std::error_code ec;
+    boost::system::error_code ec;
     fs::remove_all(m_tempDir.toStdWString(), ec);          // ✅
     fs::create_directories(m_tempDir.toStdWString(), ec);  // ✅
 
@@ -148,7 +148,7 @@ bool StructuredPacker::flattenToTemp()
 
 void StructuredPacker::cleanupTemp()
 {
-    std::error_code ec;
+    boost::system::error_code ec;
     fs::remove_all(m_tempDir.toStdWString(), ec);   // ✅
 }
 
@@ -218,7 +218,7 @@ bool StructuredPacker::loadManifest()
 bool StructuredPacker::packFromManifest()
 {
     // 1. Готовим чистый временный каталог — тот же, что использует fallback
-    std::error_code ec;
+    boost::system::error_code ec;
     fs::remove_all(m_tempDir.toStdWString(), ec);
     QDir().mkpath(m_tempDir);
     if (!QFileInfo::exists(m_tempDir)) {
@@ -242,7 +242,7 @@ bool StructuredPacker::packFromManifest()
         const fs::path src = srcAbs.toStdWString();
         const fs::path dst = tmpRoot / e.originalName.toStdWString();
 
-        std::error_code e2;
+        boost::system::error_code e2;
         if (!fs::exists(src, e2)) {
             qWarning() << "StructuredPacker: пропуск — файл не найден:"
                        << e.diskPath

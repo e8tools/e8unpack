@@ -329,7 +329,10 @@ private:
 
 int PackFromFolder(const std::string &dirname, const std::string &filename);
 int BuildCfFile(const std::string &dirname, const std::string &filename, bool dont_deflate);
+int BuildCfFileCompile(const std::string &in_dirname, const std::string &out_filename, bool dont_deflate);
 int UnpackToFolder(const std::string &filename, const std::string &dirname, const std::string &block_name, bool print_progress = false);
+
+int ParseDecompile(const std::string &filename_in, const std::string &dirname, const std::vector< std::string > &filter);
 
 int Parse(
 		const std::string                &filename,

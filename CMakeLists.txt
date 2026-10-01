@@ -60,6 +60,7 @@ add_executable (v8unpack ${V8UNPACK_SOURCES} ${V8UNPACK_HEADERS} ${RC_FILE}
 	src/output/FileLayoutBuilder.h
 	src/output/FileLayoutBuilder.cpp
 	src/output/StructuredPacker.h
+	src/output/StructuredPacker.cpp
 	src/output/StructuredUnpacker.h
 	src/output/UnpackManifest.h
 	src/output/StructuredUnpacker.cpp

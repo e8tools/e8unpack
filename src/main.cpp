@@ -217,14 +217,14 @@ int decompile(vector<string> &argv)
 		}
 	}
 
-	return Parse(argv[0], argv[1], filter);
+	return ParseDecompile(argv[0], argv[1], filter);
 }
 
 // -CO[MPILE]  in_dirname  out_filename
 // Логика аналогична build без опции -N[OPACK].
 int compile(vector<string> &argv)
 {
-	int ret = BuildCfFile(argv[0], argv[1], false);
+	int ret = BuildCfFileCompile(argv[0], argv[1], false);
 	return ret;
 }
 
