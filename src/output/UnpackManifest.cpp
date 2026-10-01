@@ -14,9 +14,7 @@ namespace v8unpack {
 
 QString UnpackManifest::pathFor(const QString& outputDir)
 {
-    return QDir(outputDir).filePath(QStringLiteral("%1/%2")
-                                    .arg(QString::fromLatin1(kDirName),
-                                         QString::fromLatin1(kFileName)));
+    return QDir(outputDir).filePath(QStringLiteral("%1/%2").arg(QString::fromLatin1(kDirName), QString::fromLatin1(kFileName)));
 }
 
 bool UnpackManifest::exists(const QString& outputDir)

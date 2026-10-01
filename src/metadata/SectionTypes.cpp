@@ -18,8 +18,6 @@ static QHash<QString, QString> buildSections()
     add(GUID_Section_Templates,       sec_Templates);
     add(GUID_Section_Commands,        sec_Commands);
     add(GUID_Section_TabularSections, sec_TabularSections);
-    //add(GUID_Section_Attributes,      sec_Attributes);
-    //add(GUID_Section_TabularSections, sec_TabularSections);
 
     return m;
 }

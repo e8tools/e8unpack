@@ -49,6 +49,7 @@ static bool isGuidLike(const QString& name)
 {
     static const QRegularExpression re(
         R"(^[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}(\.\d+)?$)");
+    
     return re.match(name).hasMatch();
 }
 
@@ -63,8 +64,7 @@ bool StructuredPacker::flattenToTemp()
 
     int copied = 0;
 
-    fs::recursive_directory_iterator it(
-        srcRoot, fs::directory_options::skip_permission_denied, ec);
+    fs::recursive_directory_iterator it(srcRoot, fs::directory_options::skip_permission_denied, ec);
     fs::recursive_directory_iterator end;
 
     for (; it != end; it.increment(ec)) {
@@ -76,14 +76,16 @@ bool StructuredPacker::flattenToTemp()
         const fs::path& src = it->path();
 
         auto rel = fs::relative(src, srcRoot, ec);
-        if (ec) continue;
-        const QString relStr = QString::fromStdWString(    // ✅
-            rel.generic_wstring());
+        
+        if (ec) 
+            continue;
+        
+        const QString relStr = QString::fromStdWString(rel.generic_wstring());
+        
         if (relStr.startsWith(QLatin1String(".tmp_pack")))
             continue;
 
-        const QString fileName = QString::fromStdWString(  // ✅
-            src.filename().wstring());
+        const QString fileName = QString::fromStdWString(src.filename().wstring());
 
         const bool isService = (fileName == QStringLiteral("root")
                                 || fileName == QStringLiteral("version")
@@ -157,31 +159,6 @@ void StructuredPacker::cleanupTemp()
 // ────────────────────────────────────────────────────────────────
 bool StructuredPacker::run()
 {
-    /*
-    if (!QFileInfo::exists(m_inputDir)) {
-        qWarning() << "StructuredPacker: каталог не найден:" << m_inputDir;
-        return false;
-    }
-
-    if (!flattenToTemp()) {
-        cleanupTemp();
-        return false;
-    }
-
-    int ret = v8unpack::BuildCfFile(
-        m_tempDir.toStdString(),
-        m_outputFile.toStdString(),
-        m_noDeflate);
-
-    cleanupTemp();
-
-    if (ret != v8unpack::V8UNPACK_OK) {
-        qWarning() << "StructuredPacker: BuildCfFile вернул код" << ret;
-        return false;
-    }
-
-    return true;
-    */
     // Пытаемся загрузить manifest — если он есть, собираем строго по нему.
     m_manifestLoaded = loadManifest();
 
@@ -253,21 +230,16 @@ bool StructuredPacker::packFromManifest()
         // Создаём подкаталоги, если originalName вдруг содержит '/'
         fs::create_directories(dst.parent_path(), e2);
 
-        // ▼▼▼ ВОТ ЭТО ГЛАВНОЕ ИСПРАВЛЕНИЕ ▼▼▼
         e2.clear();
         if (fs::is_directory(src, e2)) {
             // Составной элемент (модуль, форма, макет и т.п.):
             // каталог с info + text внутри. Копируем рекурсивно.
-            fs::copy(src, dst,
-                     fs::copy_options::recursive |
-                     fs::copy_options::overwrite_existing,
-                     e2);
+            fs::copy(src, dst, fs::copy_options::recursive | fs::copy_options::overwrite_existing, e2);
         } else {
             // Обычный одиночный файл (root, version, versions, ...)
-            fs::copy_file(src, dst,
-                          fs::copy_options::overwrite_existing, e2);
+            fs::copy_file(src, dst, fs::copy_options::overwrite_existing, e2);
         }
-        // ▲▲▲ КОНЕЦ ИСПРАВЛЕНИЯ ▲▲▲
+        
         if (e2) {
             qWarning() << "StructuredPacker: ошибка копирования"
                        << e.diskPath << "->" << e.originalName
@@ -320,10 +292,7 @@ bool StructuredPacker::packFromDirectoryFallback()
         return false;
     }
 
-    const int ret = v8unpack::BuildCfFile(
-        m_tempDir.toStdString(),
-        m_outputFile.toStdString(),
-        m_noDeflate);
+    const int ret = v8unpack::BuildCfFile(m_tempDir.toStdString(), m_outputFile.toStdString(), m_noDeflate);
 
     cleanupTemp();
 
@@ -352,8 +321,11 @@ bool StructuredPacker::packFromDirectoryFallback()
 //
 static bool isServiceDir(const std::filesystem::path& rel)
 {
-    if (rel.empty()) return false;
+    if (rel.empty()) 
+        return false;
+    
     const std::wstring first = rel.begin()->wstring();
+    
     return first == L".e8unpack" || first == L".tmp_pack";
 }
 

@@ -8,7 +8,7 @@
 #include <QString>
 #include <filesystem>
 #include "src/output/UnpackManifest.h"
-#include <QFileInfo>   // если QFileInfo используется
+#include <QFileInfo>   
 
 namespace v8unpack {
 
@@ -34,10 +34,9 @@ public:
     bool run();
 
 private:
-    UnpackManifest m_manifest;    // <-- НОВОЕ
-    bool m_manifestLoaded = false; // <-- НОВОЕ
+    UnpackManifest m_manifest;    
+    bool m_manifestLoaded = false; 
 
-    // НОВЫЕ методы
     bool loadManifest();
     bool packFromManifest();
     bool packFromDirectoryFallback();

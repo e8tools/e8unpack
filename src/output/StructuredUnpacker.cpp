@@ -42,6 +42,7 @@ bool StructuredUnpacker::isServiceName(const QString &name)
     };
     if (!looksLikeGuid(name))
         return true;
+    
     return kService.contains(name);
 }
 
@@ -49,7 +50,7 @@ bool StructuredUnpacker::loadObjectNames()
 {
     QString configDir = m_tempDir;
 
-    const QString serviceDir = QDir(m_tempDir).filePath(serviceFolderName());
+    const QString serviceDir    = QDir(m_tempDir).filePath(serviceFolderName());
     const QString rootInService = QDir(serviceDir).filePath(QStringLiteral("root"));
     const QString rootInTemp    = QDir(m_tempDir).filePath(QStringLiteral("root"));
 
@@ -70,11 +71,18 @@ bool StructuredUnpacker::loadObjectNames()
     // ✅ Передаём путь как wstring, чтобы кириллица не портилась
     ConfigStructureReader reader(configDir.toStdWString());
 
-    if (!reader.loadRoot()) { qWarning() << "... root fail"; return false; }
-    if (!reader.loadObjectGroups()) { qWarning() << "... groups fail"; return false; }
+    if (!reader.loadRoot()) { 
+        qWarning() << "... root fail"; 
+        return false; 
+    }
+    
+    if (!reader.loadObjectGroups()) { 
+        qWarning() << "... groups fail"; 
+        return false; 
+    }
 
-    m_configGuid = reader.configGuid();
-    m_nameCache  = reader.resolveAllNames();
+    m_configGuid   = reader.configGuid();
+    m_nameCache    = reader.resolveAllNames();
     m_groups_cache = reader.groups();
 
     m_typeOf.clear();
@@ -111,23 +119,21 @@ QString StructuredUnpacker::objectName(const QString &guid) const
 QString StructuredUnpacker::findRootDir() const
 {
     boost::system::error_code ec;
-    const fs::path tempRoot(m_tempDir.toStdWString());   // ✅
+    const fs::path tempRoot(m_tempDir.toStdWString());   
 
     if (!fs::exists(tempRoot, ec))
         return {};
 
-    fs::recursive_directory_iterator it(
-        tempRoot, fs::directory_options::skip_permission_denied, ec);
+    fs::recursive_directory_iterator it(tempRoot, fs::directory_options::skip_permission_denied, ec);
     fs::recursive_directory_iterator end;
 
     for (; it != end; it.increment(ec)) {
         if (ec) break;
 
         if (it->is_regular_file(ec)
-            && it->path().filename() == L"root")          // ✅ wchar_t
+            && it->path().filename() == L"root")          
         {
-            return QString::fromStdWString(               // ✅
-                it->path().parent_path().wstring());
+            return QString::fromStdWString(it->path().parent_path().wstring());
         }
     }
     return {};
@@ -157,12 +163,8 @@ bool StructuredUnpacker::indexChildElements()
     const QString configDir    = QDir(m_tempDir).filePath(serviceFolderName());
     const QString configDirAlt = m_tempDir;
 
-    const QString effectiveDir =
-        QFileInfo::exists(QDir(configDir).filePath("root"))
-            ? configDir
-            : configDirAlt;
+    const QString effectiveDir = QFileInfo::exists(QDir(configDir).filePath("root")) ? configDir : configDirAlt;
 
-    // ✅ wstring
     ConfigStructureReader reader(effectiveDir.toStdWString());
 
     for (const auto& g : m_groups_cache) {
@@ -185,24 +187,26 @@ bool StructuredUnpacker::indexChildElements()
 
     qDebug() << "StructuredUnpacker: дочерних элементов проиндексировано:"
              << m_childIndex.size();
+
     return !m_childIndex.isEmpty();
 }
 
-QString StructuredUnpacker::targetRelativePath(
-    const fs::path &rel, const QString &guid, const QString &parentGuid) const
+QString StructuredUnpacker::targetRelativePath(const fs::path &rel, const QString &guid, const QString &parentGuid) const
 {
     const int depth = static_cast<int>(std::distance(rel.begin(), rel.end()));
 
     // ── 1. Верхний уровень
     if (depth == 1) {
         if (guid.isEmpty())
-            return serviceFolderName() + "/"
-                   + QString::fromStdWString(rel.filename().wstring());   // ✅
+            return serviceFolderName() + "/" + QString::fromStdWString(rel.filename().wstring());   
 
         const auto &types = metadataTypes();
+        
         auto it = types.find(normalizeGuid(guid));
+        
         if (it != types.end())
             return it.value();
+        
         return serviceFolderName() + "/" + guid;
     }
 
@@ -210,26 +214,24 @@ QString StructuredUnpacker::targetRelativePath(
     if (depth == 2 && !parentGuid.isEmpty()) {
         const auto &types = metadataTypes();
         auto typeIt = types.find(normalizeGuid(parentGuid));
-        const QString typeName =
-            (typeIt != types.end()) ? typeIt.value() : serviceFolderName();
+        const QString typeName = (typeIt != types.end()) ? typeIt.value() : serviceFolderName();
 
         return typeName + "/" + objectName(guid);
     }
 
     // ── 3+ Глубже
     auto it = rel.begin();
-    const QString typeGuid = QString::fromStdWString(it->wstring()); ++it;   // ✅
-    const QString objGuid  = (it != rel.end())
-                                ? QString::fromStdWString(it->wstring())    // ✅
-                                : QString();
+    const QString typeGuid = QString::fromStdWString(it->wstring()); ++it;   
+    const QString objGuid  = (it != rel.end()) ? QString::fromStdWString(it->wstring()) : QString();
 
     if (objGuid.isEmpty())
-        return QString::fromStdWString(rel.generic_wstring());              // ✅
+        return QString::fromStdWString(rel.generic_wstring());              
 
     const auto &types = metadataTypes();
+    
     auto typeIt = types.find(normalizeGuid(typeGuid));
-    const QString typeName =
-        (typeIt != types.end()) ? typeIt.value() : serviceFolderName();
+    
+    const QString typeName = (typeIt != types.end()) ? typeIt.value() : serviceFolderName();
 
     const QString objName = objectName(objGuid);
 
@@ -247,17 +249,15 @@ QString StructuredUnpacker::targetRelativePath(
 bool StructuredUnpacker::unpackToTemp()
 {
     boost::system::error_code ec;
-    fs::remove_all(m_tempDir.toStdWString(), ec);   // ✅
+    fs::remove_all(m_tempDir.toStdWString(), ec);   
 
     QDir().mkpath(m_tempDir);
 
     std::vector<std::string> filter;
+    
     // API v8unpack принимает std::string. Передаём UTF-8,
     // а внутри V8File.cpp пути открываются через std::filesystem::u8path.
-    int ret = v8unpack::Parse(
-        m_inputFile.toStdString(),
-        m_tempDir.toStdString(),
-        filter);
+    int ret = v8unpack::Parse(m_inputFile.toStdString(), m_tempDir.toStdString(), filter);
 
     return ret == v8unpack::V8UNPACK_OK;
 }
@@ -265,25 +265,27 @@ bool StructuredUnpacker::unpackToTemp()
 bool StructuredUnpacker::buildAndApplyPlan()
 {
     boost::system::error_code ec;
-    const fs::path tempRoot(m_tempDir.toStdWString());      // ✅
-    const fs::path targetRoot(m_outputDir.toStdWString());  // ✅
+    const fs::path tempRoot(m_tempDir.toStdWString());      
+    const fs::path targetRoot(m_outputDir.toStdWString());  
 
     if (!fs::exists(tempRoot, ec))
         return false;
 
     // ── 0. Заранее создаём все каталоги верхнего уровня из справочника
     {
-        fs::create_directories(
-            targetRoot / serviceFolderName().toStdWString(), ec);
+        fs::create_directories(targetRoot / serviceFolderName().toStdWString(), ec);
 
         const auto& types = metadataTypes();
+
         for (auto it = types.begin(); it != types.end(); ++it) {
+            
             const QString& typeName = it.value();
+            
             if (typeName.isEmpty())
                 continue;
 
-            fs::create_directories(
-                targetRoot / typeName.toStdWString(), ec);   // ✅
+            fs::create_directories(targetRoot / typeName.toStdWString(), ec);   
+
         }
     }
 
@@ -294,8 +296,7 @@ bool StructuredUnpacker::buildAndApplyPlan()
         if (ec) break;
 
         const fs::path& src = entry.path();
-        const QString name = QString::fromStdWString(     // ✅
-            src.filename().wstring());
+        const QString name = QString::fromStdWString(src.filename().wstring());
 
         QString targetRel;
         const QString baseGuid = baseGuidFromFileName(name);
@@ -315,14 +316,13 @@ bool StructuredUnpacker::buildAndApplyPlan()
         }
         else if (m_childIndex.contains(key)) {
             const ChildInfo info = m_childIndex.value(key);
-            targetRel = info.parentType + "/" + info.parentName + "/"
-                        + info.sectionName + "/" + name;
+            targetRel = info.parentType + "/" + info.parentName + "/" + info.sectionName + "/" + name;
         }
         else {
             targetRel = serviceFolderName() + "/" + name;
         }
 
-        fs::path dst = targetRoot / targetRel.toStdWString();   // ✅
+        fs::path dst = targetRoot / targetRel.toStdWString();   
         plan.push_back({ src, dst });
     }
 
@@ -343,7 +343,7 @@ bool StructuredUnpacker::buildAndApplyPlan()
             int n = 1;
             while (fs::exists(alt, e2)) {
                 alt = item.dst;
-                alt += (L"." + std::to_wstring(n++));       // ✅
+                alt += (L"." + std::to_wstring(n++));       
             }
             e2.clear();
             fs::rename(item.src, alt, e2);
@@ -356,9 +356,7 @@ bool StructuredUnpacker::buildAndApplyPlan()
             fs::rename(item.src, item.dst, e2);
             if (e2) {
                 e2.clear();
-                fs::copy(item.src, item.dst,
-                         fs::copy_options::recursive |
-                             fs::copy_options::overwrite_existing, e2);
+                fs::copy(item.src, item.dst, fs::copy_options::recursive | fs::copy_options::overwrite_existing, e2);
                 if (!e2) {
                     boost::system::error_code rmEc;
                     fs::remove_all(item.src, rmEc);
@@ -371,7 +369,7 @@ bool StructuredUnpacker::buildAndApplyPlan()
 
         if (!moved) {
             qWarning() << "Не удалось перенести"
-                       << QString::fromStdWString(item.src.wstring())   // ✅
+                       << QString::fromStdWString(item.src.wstring())   
                        << "->" << QString::fromStdWString(item.dst.wstring())
                        << ":" << QString::fromStdString(e2.message());
             continue;
@@ -388,12 +386,10 @@ bool StructuredUnpacker::buildAndApplyPlan()
         boost::system::error_code relEc;
         const fs::path rel = fs::relative(actualDst, targetRoot, relEc);
         if (!relEc && !rel.empty()) {
-            me.diskPath = QDir::fromNativeSeparators(
-                QString::fromStdWString(rel.generic_wstring()));
+            me.diskPath = QDir::fromNativeSeparators(QString::fromStdWString(rel.generic_wstring()));
         } else {
             // fallback — абсолютный путь (на случай странных ФС)
-            me.diskPath = QDir::fromNativeSeparators(
-                QString::fromStdWString(actualDst.wstring()));
+            me.diskPath = QDir::fromNativeSeparators(QString::fromStdWString(actualDst.wstring()));
         }
 
         // Размер данных (распакованных). Сжатие при сборке packer
@@ -419,7 +415,7 @@ bool StructuredUnpacker::buildAndApplyPlan()
 void StructuredUnpacker::cleanupTemp()
 {
     boost::system::error_code ec;
-    fs::remove_all(m_tempDir.toStdWString(), ec);   // ✅
+    fs::remove_all(m_tempDir.toStdWString(), ec);   
 }
 
 bool StructuredUnpacker::run()

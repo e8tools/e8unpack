@@ -1,4 +1,4 @@
-//---------------------------------------------------------------------------
+//===========================================================================
 #ifndef Parse_treeH
 #define Parse_treeH
 
@@ -13,7 +13,7 @@
 
 #include "NodeTypes.h"
 
-//---------------------------------------------------------------------------
+//===========================================================================
 class tree {
 private:
     QString    value;
@@ -59,7 +59,7 @@ typedef tree* treeptr;
 typedef std::unique_ptr<tree> tree_unique_ptr;
 typedef std::shared_ptr<tree> tree_shared_ptr;
 
-//---------------------------------------------------------------------------
+//===========================================================================
 tree* parse_1Ctext(const QString& text, const QString& path);
 tree* parse_1Cstream(QIODevice* str, const QString& path);
 bool  test_parse_1Ctext(QIODevice* str, const QString& path);

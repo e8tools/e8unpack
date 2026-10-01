@@ -100,8 +100,8 @@ private:
 
     QVector<ObjectGroup> m_groups_cache;
 
-    UnpackManifest m_manifest;   // <-- НОВОЕ
-    int m_nextOriginalIndex = 0; // <-- НОВОЕ: счётчик порядка
+    UnpackManifest m_manifest;   
+    int m_nextOriginalIndex = 0; // счётчик порядка
 };
 
 } // namespace v8

@@ -204,6 +204,7 @@ int build_nopack(vector<string> &argv)
 
 // -DE[COMPILE]  in_filename  out_dirname  [block_name1 block_name2 ...]
 // Логика аналогична parse: разбор файла в каталог с необязательным фильтром по блокам.
+// Происходит разбор полученных файлов по метаданным
 int decompile(vector<string> &argv)
 {
 	if (argv.size() < 2) {
@@ -222,6 +223,7 @@ int decompile(vector<string> &argv)
 
 // -CO[MPILE]  in_dirname  out_filename
 // Логика аналогична build без опции -N[OPACK].
+// Файлы собираются во временный каталог, потом из него собирается конфигурация
 int compile(vector<string> &argv)
 {
 	int ret = BuildCfFileCompile(argv[0], argv[1], false);
