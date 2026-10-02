@@ -10,7 +10,15 @@ else()
 	set(RC_FILE "")
 endif()
 
-add_definitions(-D_CRT_SECURE_NO_WARNINGS)
+if(NOT MSVC)
+	add_definitions(-D_CRT_SECURE_NO_WARNINGS)
+endif()
+
+foreach(stale_define V8_DEFAULT_PAGE_SIZE V8_OFFSET_8316 V8_FF_SIGNATURE V8_FF64_SIGNATURE)
+	if(CMAKE_CXX_FLAGS MATCHES "${stale_define}")
+		message(WARNING "Уберите -D${stale_define} из CMAKE_CXX_FLAGS: это имя занято константой в src/V8File.h.")
+	endif()
+endforeach()
 
 set (V8UNPACK_SOURCES src/main.cpp src/V8File.cpp src/utils.cpp src/placeholder216.cpp src/VersionFile.cpp)
 set (V8UNPACK_HEADERS src/V8File.h src/version.h src/zconf.h src/zlib.h src/VersionFile.h)
@@ -73,17 +81,52 @@ target_include_directories(v8unpack PRIVATE
 
 add_definitions (-DBOOST_ALL_NO_LIB)
 
-# По умолчанию используем динамический Boost (работает на Linux/Ubuntu)
-option(USE_STATIC_BOOST "Link against static boost libraries" OFF)
+# По умолчанию линкуем статический Boost: иначе рядом с v8unpack.exe
+# требуются boost_*.dll. Динамический вариант включается через USE_STATIC_BOOST=OFF.
+option(USE_STATIC_BOOST "Link against static boost libraries" ON)
+option(Boost_USE_MULTITHREADED "Link against multithreaded boost libraries" ON)
+
 if(USE_STATIC_BOOST)
 	set (Boost_USE_STATIC_LIBS ON)
-	set (Boost_USE_MULTITHREADED OFF)
-	set (Boost_USE_STATIC_RUNTIME ON)
+	if(MSVC)
+		set (Boost_USE_STATIC_RUNTIME ON)
+	else()
+		set (Boost_USE_STATIC_RUNTIME OFF)
+	endif()
 else()
 	set (Boost_USE_STATIC_LIBS OFF)
 	set (Boost_USE_STATIC_RUNTIME OFF)
-	set (Boost_USE_MULTITHREADED ON)
 endif()
+
+# Подсказки для поиска Boost (можно задать в кэше через -D):
+#   Boost_ROOT / BOOST_ROOT — корень Boost (каталог с boost/ и lib*/);
+#       поддерживаются оба написания: boost-cmake ищет по Boost_ROOT,
+#       а модуль FindBoost — по BOOST_ROOT и падает от чужого написания;
+#   Boost_LIBRARY_DIR / BOOST_LIBRARYDIR — каталог с собранными библиотеками;
+#   Boost_COMPILER    — суффикс тулсета, если библиотеки собраны другим MSVC
+#       (например, -vc142 для сборок VS2019, используемых в VS2022).
+set (Boost_ROOT "" CACHE PATH "Boost root directory (also BOOST_ROOT)")
+set (BOOST_ROOT "" CACHE PATH "Boost root directory")
+set (Boost_LIBRARY_DIR "" CACHE PATH "Boost libraries directory")
+set (BOOST_LIBRARYDIR "" CACHE PATH "Boost libraries directory")
+
+if(Boost_ROOT)
+	list (APPEND CMAKE_PREFIX_PATH "${Boost_ROOT}")
+elseif(BOOST_ROOT)
+	list (APPEND CMAKE_PREFIX_PATH "${BOOST_ROOT}")
+endif()
+
+if(NOT Boost_LIBRARY_DIR)
+	if(BOOST_LIBRARYDIR)
+		set (Boost_LIBRARY_DIR "${BOOST_LIBRARYDIR}")
+	endif()
+endif()
+
+if(Boost_LIBRARY_DIR)
+	set (BOOST_LIBRARYDIR "${Boost_LIBRARY_DIR}" CACHE PATH "Boost libraries directory" FORCE)
+endif()
+
+set (Boost_COMPILER "" CACHE STRING "Boost toolset suffix, e.g. -vc142")
 
 find_package (Boost 1.53 REQUIRED COMPONENTS filesystem system iostreams)
 

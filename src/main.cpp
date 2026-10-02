@@ -31,6 +31,21 @@ typedef int (*handler_t)(vector<string> &argv);
 void read_param_file(const char *filename, vector< vector<string> > &list);
 handler_t get_run_mode(const vector<string> &args, int &arg_base, bool &allow_listfile);
 
+// Обработчики режимов: объявлены заранее, чтобы required_args_for()
+// мог сравнивать указатели на функции.
+int usage(vector<string> &argv);
+int version(vector<string> &argv);
+int inflate(vector<string> &argv);
+int deflate(vector<string> &argv);
+int unpack(vector<string> &argv);
+int pack(vector<string> &argv);
+int parse(vector<string> &argv);
+int decompile(vector<string> &argv);
+int build(vector<string> &argv);
+int build_nopack(vector<string> &argv);
+int compile(vector<string> &argv);
+int list_files(vector<string> &argv);
+
 int usage(vector<string> &argv)
 {
 	cout << endl;
@@ -72,26 +87,82 @@ int version(vector<string> &argv)
 	return 0;
 }
 
+// Сколько непустых аргументов (считая с argv[0]) требует каждый режим.
+// Возвращает -1, если режим определяет требования сам.
+static int required_args_for(handler_t handler)
+{
+	if (handler == inflate)   return 2;   // in_filename out_filename
+	if (handler == deflate)   return 2;   // in_filename out_filename
+	if (handler == unpack)    return 2;   // in_filename out_dirname [необязательный block_name]
+	if (handler == pack)      return 2;   // in_dirname out_filename
+	if (handler == parse)     return 2;   // in_filename out_dirname [блоки...]
+	if (handler == decompile) return 2;   // in_filename out_dirname [блоки...]
+	if (handler == build)     return 2;   // in_dirname out_filename
+	if (handler == build_nopack) return 2;
+	if (handler == compile)   return 2;   // in_dirname out_filename
+	if (handler == list_files) return 1;  // in_filename
+	return -1;
+}
+
+// Проверить, что первые `required` аргументов существуют и непусты.
+static bool has_args(const vector<string> &args, int required)
+{
+	if (required < 0) {
+		return true;
+	}
+
+	const size_t count = static_cast<size_t>(required);
+	if (args.size() < count) {
+		return false;
+	}
+
+	for (size_t i = 0; i < count; i++) {
+		if (args[i].empty()) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
 int inflate(vector<string> &argv)
 {
+	if (!has_args(argv, required_args_for(inflate))) {
+		return V8UNPACK_SHOW_USAGE;
+	}
+
 	int ret = Inflate(argv[0], argv[1]);
 	return ret;
 }
 
 int deflate(vector<string> &argv)
 {
+	if (!has_args(argv, required_args_for(deflate))) {
+		return V8UNPACK_SHOW_USAGE;
+	}
+
 	int ret = Deflate(argv[0], argv[1]);
 	return ret;
 }
 
 int unpack(vector<string> &argv)
 {
+	// Третий аргумент (имя блока) необязателен: пустое значение означает
+	// распаковку всего контейнера (см. unpack_to_folder в V8File.cpp).
+	if (!has_args(argv, required_args_for(unpack))) {
+		return V8UNPACK_SHOW_USAGE;
+	}
+
 	int ret = UnpackToFolder(argv[0], argv[1], argv[2], true);
 	return ret;
 }
 
 int pack(vector<string> &argv)
 {
+	if (!has_args(argv, required_args_for(pack))) {
+		return V8UNPACK_SHOW_USAGE;
+	}
+
 	int ret = PackFromFolder(argv[0], argv[1]);
 	return ret;
 }
@@ -99,7 +170,7 @@ int pack(vector<string> &argv)
 int parse(vector<string> &argv)
 {
 
-	if (argv.size() < 2) {
+	if (!has_args(argv, required_args_for(parse))) {
 		return V8UNPACK_SHOW_USAGE;
 	}
 
@@ -115,13 +186,17 @@ int parse(vector<string> &argv)
 
 int list_files(vector<string> &argv)
 {
+	if (!has_args(argv, required_args_for(list_files))) {
+		return V8UNPACK_SHOW_USAGE;
+	}
+
 	int ret = ListFiles(argv[0]);
 	return ret;
 }
 
 int process_list(vector<string> &argv)
 {
-	if (argv.empty()) {
+	if (argv.empty() || argv.at(0).empty()) {
 		return V8UNPACK_SHOW_USAGE;
 	}
 
@@ -192,12 +267,20 @@ int example(vector<string> &argv)
 
 int build(vector<string> &argv)
 {
+	if (!has_args(argv, required_args_for(build))) {
+		return V8UNPACK_SHOW_USAGE;
+	}
+
 	int ret = BuildCfFile(argv[0], argv[1], false);
 	return ret;
 }
 
 int build_nopack(vector<string> &argv)
 {
+	if (!has_args(argv, required_args_for(build_nopack))) {
+		return V8UNPACK_SHOW_USAGE;
+	}
+
 	int ret = BuildCfFile(argv[0], argv[1], true);
 	return ret;
 }
@@ -207,7 +290,7 @@ int build_nopack(vector<string> &argv)
 // Происходит разбор полученных файлов по метаданным
 int decompile(vector<string> &argv)
 {
-	if (argv.size() < 2) {
+	if (!has_args(argv, required_args_for(decompile))) {
 		return V8UNPACK_SHOW_USAGE;
 	}
 
@@ -226,6 +309,10 @@ int decompile(vector<string> &argv)
 // Файлы собираются во временный каталог, потом из него собирается конфигурация
 int compile(vector<string> &argv)
 {
+	if (!has_args(argv, required_args_for(compile))) {
+		return V8UNPACK_SHOW_USAGE;
+	}
+
 	int ret = BuildCfFileCompile(argv[0], argv[1], false);
 	return ret;
 }
@@ -349,38 +436,42 @@ int main(int argc, char* argv[])
 
 	vector<string> cli_args;
 
-	if (handler == nullptr) {
+	if (handler == nullptr || handler == usage) {
 		usage(cli_args);
 		return 1;
 	}
 
-	if (allow_listfile && arg_base <= argc) {
-		string a_list(argv[arg_base]);
-		transform(a_list.begin(), a_list.end(), a_list.begin(), ::tolower);
-		if (a_list == "-list" || a_list == "-l") {
-			// Передан файл с параметрами
-			vector< vector<string> > param_list;
-			read_param_file(argv[arg_base + 1], param_list);
-
-			int ret = 0;
-
-			for (auto argv_from_file : param_list) {
-				int ret1 = handler(argv_from_file);
-				if (ret1 != 0 && ret == 0) {
-					ret = ret1;
-				}
-			}
-
-			return ret;
-		}
-	}
-
-	for (int i = arg_base; i < argc; i++) {
-		cli_args.emplace_back(string(argv[i]));
+	// Аргументы командной строки после режима.
+	// Заполняем до размера, который читают обработчики, чтобы любое
+	// обращение по индексу оставалось внутри вектора: за реальные
+	// аргументы отвечает проверка has_args() внутри обработчиков.
+	for (size_t i = static_cast<size_t>(arg_base); i < args.size(); i++) {
+		cli_args.push_back(args[i]);
 	}
 	while (cli_args.size() < 3) {
-		// Дополним пустыми строками, чтобы избежать лишних проверок
 		cli_args.emplace_back("");
+	}
+
+	if (allow_listfile && (cli_args[0] == "-list" || cli_args[0] == "-l")) {
+		// Передан файл с параметрами
+		if (cli_args[1].empty()) {
+			usage(cli_args);
+			return V8UNPACK_SHOW_USAGE;
+		}
+
+		vector< vector<string> > param_list;
+		read_param_file(cli_args[1].c_str(), param_list);
+
+		int ret = 0;
+
+		for (auto argv_from_file : param_list) {
+			int ret1 = handler(argv_from_file);
+			if (ret1 != 0 && ret == 0) {
+				ret = ret1;
+			}
+		}
+
+		return ret;
 	}
 
 	int ret = handler(cli_args);
