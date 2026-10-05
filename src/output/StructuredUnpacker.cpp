@@ -256,7 +256,7 @@ bool StructuredUnpacker::unpackToTemp()
     std::vector<std::string> filter;
     
     // API v8unpack принимает std::string. Передаём UTF-8,
-    // а внутри V8File.cpp пути открываются через std::filesystem::u8path.
+    // а внутри V8File.cpp пути открываются через boost::filesystem::fstream.
     int ret = v8unpack::Parse(m_inputFile.toStdString(), m_tempDir.toStdString(), filter);
 
     return ret == v8unpack::V8UNPACK_OK;

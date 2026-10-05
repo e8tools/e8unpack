@@ -319,7 +319,7 @@ bool StructuredPacker::packFromDirectoryFallback()
 //  Вариант B: если хочется инкапсулировать проверку — вот отдельный
 //  вспомогательный метод:
 //
-static bool isServiceDir(const std::filesystem::path& rel)
+static bool isServiceDir(const fs::path& rel)
 {
     if (rel.empty()) 
         return false;

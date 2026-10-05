@@ -8,7 +8,6 @@
 #include "src/metadata/MetadataMap.h"
 #include <QString>
 #include <QVector>
-#include <filesystem>
 #include "src/metadata/ConfigStructureReader.h"
 #include <QHash>
 #include "src/output/UnpackManifest.h"
