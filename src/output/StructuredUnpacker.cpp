@@ -275,6 +275,135 @@ bool StructuredUnpacker::unpackToTemp()
     return ret == v8unpack::V8UNPACK_OK;
 }
 
+bool StructuredUnpacker::flattenModuleEntries()
+{
+    // Типы модулей самой конфигурации: по суффиксу элемента контейнера
+    // (.0/.5/.6/.7), а если суффикс неизвестен — по первой строке комментария.
+    static const QHash<QString, QString> moduleNames = {
+        {QStringLiteral("Модуль управляемого приложения"), QStringLiteral("Модуль управляемого приложения")},
+        {QStringLiteral("Модуль сеанса"), QStringLiteral("Модуль сеанса")},
+        {QStringLiteral("Модуль внешнего соединения"), QStringLiteral("Модуль внешнего соединения")},
+        {QStringLiteral("Модуль обычного приложения"), QStringLiteral("Модуль обычного приложения")}
+    };
+    static const QHash<QString, QString> moduleKindsBySuffix = {
+        {QStringLiteral("0"), QStringLiteral("Модуль обычного приложения")},
+        {QStringLiteral("5"), QStringLiteral("Модуль внешнего соединения")},
+        {QStringLiteral("6"), QStringLiteral("Модуль управляемого приложения")},
+        {QStringLiteral("7"), QStringLiteral("Модуль сеанса")}
+    };
+
+    for (auto& entry : m_manifest.entries()) {
+        const QString oldPath = QDir::fromNativeSeparators(entry.diskPath);
+        if (oldPath.isEmpty() || entry.originalName.isEmpty())
+            continue;
+
+        // Любой текст модуля 1С лежит составным элементом "<GUID>.<суффикс>"
+        // с парой файлов info/text внутри.
+        const QString baseGuid = baseGuidFromFileName(entry.originalName);
+        if (baseGuid == entry.originalName)
+            continue;                       // без суффикса — не составной элемент
+
+        const QString sourceDir = QDir(m_outputDir).filePath(oldPath);
+        if (!QFileInfo(sourceDir).isDir())
+            continue;
+
+        QFile textFile(QDir(sourceDir).filePath(QStringLiteral("text")));
+        if (!textFile.open(QIODevice::ReadOnly))
+            continue;
+        const QByteArray rawText = textFile.readAll();
+        textFile.close();
+
+        QByteArray infoBytes;
+        QFile infoFile(QDir(sourceDir).filePath(QStringLiteral("info")));
+        if (infoFile.open(QIODevice::ReadOnly)) {
+            infoBytes = infoFile.readAll();
+            infoFile.close();
+        }
+
+        QString text = QString::fromUtf8(rawText);
+        if (text.startsWith(QChar(0xFEFF)))
+            text.remove(0, 1);
+
+        const int dotPos = entry.originalName.lastIndexOf(QLatin1Char('.'));
+        const QString suffix    = dotPos >= 0 ? entry.originalName.mid(dotPos + 1) : QString();
+        const QString parentRel = QFileInfo(oldPath).path();      // каталог объекта
+
+        QString kind;
+        QString newPath;
+
+        if (parentRel == serviceFolderName()) {
+            // ── Модули самой конфигурации ─────────────────────────────
+            kind = moduleKindsBySuffix.value(suffix);
+            if (kind.isEmpty()) {
+                const QStringList lines = text.split(QLatin1Char('\n'));
+                for (const QString& line : lines) {
+                    const QString candidate = line.trimmed();
+                    if (candidate.isEmpty())
+                        continue;
+                    if (candidate.startsWith(QStringLiteral("//"))) {
+                        const QString comment = candidate.mid(2).trimmed();
+                        for (auto it = moduleNames.cbegin(); it != moduleNames.cend(); ++it) {
+                            if (comment.startsWith(it.key())) {
+                                kind = it.value();
+                                break;
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
+            if (kind.isEmpty())
+                continue;
+            newPath = parentRel + QLatin1Char('/') + kind + QStringLiteral(".bsl");
+        } else {
+            // ── Модули объектов метаданных (в т.ч. общих модулей) ──────
+            // Каталог объекта уже назван его именем, полученным из метаданных:
+            //   "Общие/Общие модули/Основной", "Справочники/Номенклатура", ...
+            // Файл модуля получает то же имя, что и сам объект.
+            const QString moduleName = parentRel.section(QLatin1Char('/'), -1, -1);
+            if (moduleName.isEmpty())
+                continue;
+            kind    = moduleName;
+            newPath = parentRel + QLatin1Char('/') + moduleName + QStringLiteral(".bsl");
+            if (QFileInfo::exists(QDir(m_outputDir).filePath(newPath))) {
+                // У объекта несколько модулей — различаем их по суффиксу элемента.
+                newPath = parentRel + QLatin1Char('/') + moduleName
+                          + QLatin1Char('.') + suffix + QStringLiteral(".bsl");
+            }
+        }
+
+        const QString targetPath = QDir(m_outputDir).filePath(newPath);
+        if (QFileInfo::exists(targetPath)) {
+            qWarning() << "StructuredUnpacker: BSL destination already exists:" << targetPath;
+            continue;
+        }
+
+        QFile bslFile(targetPath);
+        if (!bslFile.open(QIODevice::WriteOnly)) {
+            qWarning() << "StructuredUnpacker: cannot write BSL file:" << targetPath;
+            continue;
+        }
+        bslFile.write(text.toUtf8());
+        bslFile.close();
+
+        boost::system::error_code ec;
+        fs::remove_all(fs::path(sourceDir.toStdWString()), ec);
+        if (ec) {
+            qWarning() << "StructuredUnpacker: cannot remove old module directory:" << sourceDir;
+            QFile::remove(targetPath);
+            continue;
+        }
+
+        entry.diskPath         = newPath;
+        entry.moduleKind       = kind;
+        entry.moduleInfo       = infoBytes;
+        entry.moduleTextHadBom = rawText.startsWith(QByteArray::fromHex("efbbbf"));
+        entry.rawSize          = QFileInfo(targetPath).size();
+        qInfo() << "StructuredUnpacker: module flattened:" << entry.originalName << "->" << newPath;
+    }
+    return true;
+}
+
 bool StructuredUnpacker::buildAndApplyPlan()
 {
     boost::system::error_code ec;
@@ -464,6 +593,8 @@ bool StructuredUnpacker::run()
         cleanupTemp();
         return false;
     }
+
+    flattenModuleEntries();
 
     // ── Сохраняем manifest ───────────────────────────────────────
     // Делаем это ПОСЛЕ успешного переноса всех файлов и ДО cleanupTemp(),

@@ -7,6 +7,7 @@
 #include "V8File.h"
 
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QDebug>
 #include <QRegularExpression>
@@ -231,12 +232,33 @@ bool StructuredPacker::packFromManifest()
         fs::create_directories(dst.parent_path(), e2);
 
         e2.clear();
-        if (fs::is_directory(src, e2)) {
-            // Составной элемент (модуль, форма, макет и т.п.):
-            // каталог с info + text внутри. Копируем рекурсивно.
+        if (!e.moduleKind.isEmpty()) {
+            // Restore the original compound 1C module entry from a flat .bsl file.
+            fs::create_directories(dst, e2);
+            if (!e2) {
+                QFile info(QString::fromStdWString((dst / "info").wstring()));
+                if (!info.open(QIODevice::WriteOnly)) {
+                    e2 = boost::system::errc::make_error_code(boost::system::errc::io_error);
+                } else {
+                    info.write(e.moduleInfo);
+                    info.close();
+                    QFile sourceFile(QString::fromStdWString(src.wstring()));
+                    QFile text(QString::fromStdWString((dst / "text").wstring()));
+                    if (!sourceFile.open(QIODevice::ReadOnly) || !text.open(QIODevice::WriteOnly)) {
+                        e2 = boost::system::errc::make_error_code(boost::system::errc::io_error);
+                    } else {
+                        if (e.moduleTextHadBom)
+                            text.write(QByteArray::fromHex("efbbbf"));
+                        text.write(sourceFile.readAll());
+                        sourceFile.close();
+                        text.close();
+                    }
+                }
+            }
+        } else if (fs::is_directory(src, e2)) {
+            // Compound entry: recursively copy its info + text directory.
             fs::copy(src, dst, fs::copy_options::recursive | fs::copy_options::overwrite_existing, e2);
         } else {
-            // Обычный одиночный файл (root, version, versions, ...)
             fs::copy_file(src, dst, fs::copy_options::overwrite_existing, e2);
         }
         

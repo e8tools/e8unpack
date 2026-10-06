@@ -57,6 +57,9 @@ bool UnpackManifest::load(const QString& outputDir, QString* errorOut)
         e.compressed    = o.value(QStringLiteral("compressed")).toBool(true);
         e.rawSize       = static_cast<qint64>(o.value(QStringLiteral("rawSize")).toDouble(0));
         e.originalIndex = o.value(QStringLiteral("originalIndex")).toInt(-1);
+        e.moduleKind    = o.value(QStringLiteral("moduleKind")).toString();
+        e.moduleInfo    = QByteArray::fromBase64(o.value(QStringLiteral("moduleInfoBase64")).toString().toLatin1());
+        e.moduleTextHadBom = o.value(QStringLiteral("moduleTextHadBom")).toBool(true);
         if (!e.originalName.isEmpty() && !e.diskPath.isEmpty())
             m_entries.append(e);
     }
@@ -79,6 +82,11 @@ bool UnpackManifest::save(const QString& outputDir, QString* errorOut) const
         o[QStringLiteral("compressed")]    = e.compressed;
         o[QStringLiteral("rawSize")]       = static_cast<double>(e.rawSize);
         o[QStringLiteral("originalIndex")] = e.originalIndex;
+        if (!e.moduleKind.isEmpty()) {
+            o[QStringLiteral("moduleKind")] = e.moduleKind;
+            o[QStringLiteral("moduleInfoBase64")] = QString::fromLatin1(e.moduleInfo.toBase64());
+            o[QStringLiteral("moduleTextHadBom")] = e.moduleTextHadBom;
+        }
         arr.append(o);
     }
 

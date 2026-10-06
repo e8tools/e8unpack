@@ -21,6 +21,9 @@ struct ManifestEntry {
     bool    compressed = true;  // был ли элемент сжат при распаковке
     qint64  rawSize    = 0;     // размер данных до сжатия (для валидации)
     int     originalIndex = -1; // порядок записи в контейнере (1С критичен к порядку)
+    QString moduleKind;     // recognized configuration module type for flat BSL path
+    QByteArray moduleInfo;  // original compound element info bytes
+    bool moduleTextHadBom = true;
 };
 
 class UnpackManifest

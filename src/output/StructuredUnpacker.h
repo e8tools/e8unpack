@@ -97,6 +97,7 @@ private:
     /// Построить карту «дочерний элемент → родительский объект»
     /// на основе разбора секций каждого объекта.
     bool indexChildElements();
+    bool flattenModuleEntries();
 
     QVector<ObjectGroup> m_groups_cache;
 
