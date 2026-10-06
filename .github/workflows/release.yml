@@ -1,13 +1,19 @@
 name: Release
 
-# Публикация релизов e8unpack.
+# Сборка и публикация e8unpack.
 #
-#  * push в release_develop — сборка и тесты, артефакты складываются в Actions
-#    (релиз НЕ создаётся: это проверочный прогон);
-#  * push тега вида v3.0.44 — то же плюс публикация GitHub Release с файлами;
+#  * push в release_develop — сборка, тесты и артефакты, плюс обновление
+#    ЧЕРНОВОГО prerelease (тег-указатель release_develop-latest);
+#  * push тега вида v3.0.44 — сборка, тесты и опубликованный GitHub Release;
 #  * вручную (workflow_dispatch) — сборка и тесты с любого рефа.
 #
 # Ветка master здесь не участвует.
+#
+# Версия берётся из тега; для сборок по ветке — из src/version.h с суффиксом
+# -dev.<номер прогона>.
+#
+# Если шаг сборки или тестов падает, последние 40 строк вывода печатаются
+# через ::error:: и видны в аннотациях (логи Actions требуют входа в аккаунт).
 
 on:
   push:
@@ -25,6 +31,8 @@ jobs:
   linux:
     name: Linux x86_64
     runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
     steps:
       - name: Получение исходников
         uses: actions/checkout@v5
@@ -46,7 +54,8 @@ jobs:
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             V="${GITHUB_REF_NAME#v}"
           else
-            V="3.0.${GITHUB_RUN_NUMBER}"
+            BASE="$(sed -n 's/^#define V8P_VERSION "\(.*\)"/\1/p' src/version.h | head -1)"
+            V="${BASE}-dev.${GITHUB_RUN_NUMBER}"
           fi
           echo "version=${V}"
           echo "version=${V}" >> "$GITHUB_OUTPUT"
@@ -159,7 +168,8 @@ jobs:
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             V="${GITHUB_REF_NAME#v}"
           else
-            V="3.0.${GITHUB_RUN_NUMBER}"
+            BASE="$(sed -n 's/^#define V8P_VERSION "\(.*\)"/\1/p' src/version.h | head -1)"
+            V="${BASE}-dev.${GITHUB_RUN_NUMBER}"
           fi
           echo "version=${V}"
           echo "version=${V}" >> "$GITHUB_OUTPUT"
@@ -237,6 +247,55 @@ jobs:
           name: windows
           path: dist/*.zip
           if-no-files-found: error
+
+  # ─────────────────────────────────── Черновой prerelease (push в release_develop)
+  prerelease:
+    name: Черновой prerelease
+    needs: [linux, windows]
+    if: github.ref == 'refs/heads/release_develop'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Получение исходников
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Скачивание артефактов
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Файлы
+        run: find dist -type f -printf '%s\t%p\n' | sort -k2
+
+      # Тег-указатель без префикса v: он не попадает под фильтр tags: 'v*'
+      # и поэтому не запускает этот workflow повторно.
+      - name: Обновить тег-указатель
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -f release_develop-latest "${GITHUB_SHA}"
+          git push -f origin release_develop-latest
+
+      - name: Обновить черновой prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: release_develop-latest
+          name: "Черновик release_develop (3.0.44-dev.${{ github.run_number }})"
+          body: |
+            Проверочная сборка ветки `release_develop`, версия
+            `${{ needs.linux.outputs.version }}`, коммит ${{ github.sha }}.
+
+            Это черновик: он не виден публично и обновляется при каждом push
+            в `release_develop`. Внутри — те же файлы, что публикуются в
+            реальном релизе по тегу.
+          draft: true
+          prerelease: true
+          files: |
+            dist/*.tar.gz
+            dist/*.deb
+            dist/*.zip
 
   # ──────────────────────────────────────────────────────── GitHub Release (тег)
   release:
