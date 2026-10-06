@@ -10,6 +10,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QRegularExpression>
+#include <QSet>
 #include <QDebug>
 #include <system_error>
 #include <vector>
@@ -85,11 +86,23 @@ bool StructuredUnpacker::loadObjectNames()
     m_nameCache    = reader.resolveAllNames();
     m_groups_cache = reader.groups();
 
-    m_typeOf.clear();
-    for (const auto& g : reader.groups()) {
-        for (const auto& objGuid : g.objectGuids) {
-            m_typeOf.insert(objGuid.toLower(), g.typeName);
+    // Nested subsystems are listed in each subsystem's own metadata file.
+    const QVector<ObjectGroup> nestedGroups = reader.resolveNestedSubsystems();
+    m_subsystemParent = reader.resolveSubsystemParents();
+    for (const auto& group : nestedGroups) {
+        m_groups_cache.append(group);
+        for (const auto& objGuid : group.objectGuids) {
+            const QString key = objGuid.toLower();
+            const QString name = reader.resolveName(objGuid);
+            if (!name.isEmpty())
+                m_nameCache.insert(key, name);
         }
+    }
+
+    m_typeOf.clear();
+    for (const auto& g : m_groups_cache) {
+        for (const auto& objGuid : g.objectGuids)
+            m_typeOf.insert(objGuid.toLower(), g.typeName);
     }
 
     qDebug() << "StructuredUnpacker: имён:" << m_nameCache.size()
@@ -312,7 +325,23 @@ bool StructuredUnpacker::buildAndApplyPlan()
         else if (m_typeOf.contains(key)) {
             const QString typeName = m_typeOf.value(key);
             const QString objName  = m_nameCache.value(key, baseGuid);
-            targetRel = typeName + "/" + objName + "/" + name;
+            QString objectPath = typeName + "/" + objName;
+            if (normalizeGuid(typeName) == normalizeGuid(QStringLiteral("Общие/Подсистемы"))) {
+                QString parentKey = m_subsystemParent.value(key);
+                QStringList chain;
+                chain.append(objName);
+                QSet<QString> visited;
+                visited.insert(key);
+                while (!parentKey.isEmpty() && !visited.contains(parentKey)) {
+                    visited.insert(parentKey);
+                    const QString parentName = m_nameCache.value(parentKey);
+                    if (parentName.isEmpty()) break;
+                    chain.prepend(parentName);
+                    parentKey = m_subsystemParent.value(parentKey);
+                }
+                objectPath = typeName + "/" + chain.join("/");
+            }
+            targetRel = objectPath + "/" + name;
         }
         else if (m_childIndex.contains(key)) {
             const ChildInfo info = m_childIndex.value(key);

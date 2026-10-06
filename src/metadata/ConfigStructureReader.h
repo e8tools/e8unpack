@@ -64,6 +64,10 @@ public:
     /// Открывает файл <configDir>/<guid>, парсит и находит узел {1,0,<guid>}.
     QString resolveName(const QString& objectGuid) const;
 
+    /// Recursively resolve objects listed inside subsystem objects.
+    QVector<ObjectGroup> resolveNestedSubsystems() const;
+    QHash<QString, QString> resolveSubsystemParents() const;
+
     // ── Доступ к данным ────────────────────────────────────────────
     const QString& configGuid() const { return m_configGuid; }
     const QVector<ObjectGroup>& groups() const { return m_groups; }

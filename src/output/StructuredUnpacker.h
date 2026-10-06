@@ -84,6 +84,7 @@ private:
 
     QHash<QString, QString> m_nameCache;    // object guid (lower) → имя
     QHash<QString, QString> m_typeOf;       // object guid (lower) → имя типа
+    QHash<QString, QString> m_subsystemParent; // child subsystem guid → parent subsystem guid
     QString m_configGuid;                   // GUID файла структуры конфигурации
 
     /// Вернуть «базовый» GUID из имени файла:

@@ -6,6 +6,7 @@
 #include "src/metadata/SectionTypes.h"     // ← добавить это
 
 #include <QFile>
+#include <QSet>
 #include <QDebug>
 #include <system_error>
 
@@ -276,6 +277,82 @@ bool ConfigStructureReader::loadObjectGroups()
     }
 
     return !m_groups.isEmpty();
+}
+
+QHash<QString, QString> ConfigStructureReader::resolveSubsystemParents() const
+{
+    QHash<QString, QString> parents;
+    const QString subsystemType = normalizeGuid(QLatin1String(GUID_Subsystems));
+    QSet<QString> visited;
+    QVector<QString> pending;
+    for (const auto& group : m_groups)
+        if (normalizeGuid(group.typeGuid) == subsystemType)
+            pending += group.objectGuids;
+    while (!pending.isEmpty()) {
+        const QString parentGuid = pending.takeLast();
+        const QString parentKey = normalizeGuid(parentGuid);
+        if (visited.contains(parentKey)) continue;
+        visited.insert(parentKey);
+        const fs::path objFile = m_configDir / parentGuid.toStdWString();
+        boost::system::error_code ec;
+        if (!fs::exists(objFile, ec)) continue;
+        tree* objTree = loadTree(objFile, QStringLiteral("subsystem-parents:") + parentGuid);
+        if (!objTree) continue;
+        QVector<ObjectGroup> childGroups;
+        collectGroups(objTree, childGroups);
+        delete objTree;
+        for (const auto& group : childGroups) {
+            if (normalizeGuid(group.typeGuid) != subsystemType) continue;
+            for (const auto& childGuid : group.objectGuids) {
+                parents.insert(normalizeGuid(childGuid), parentKey);
+                pending += childGuid;
+            }
+        }
+    }
+    return parents;
+}
+
+QVector<ObjectGroup> ConfigStructureReader::resolveNestedSubsystems() const
+{
+    QVector<ObjectGroup> result;
+    const QString subsystemType = normalizeGuid(QLatin1String(GUID_Subsystems));
+    QSet<QString> visited;
+    QVector<QString> pending;
+
+    for (const auto& group : m_groups) {
+        if (normalizeGuid(group.typeGuid) == subsystemType)
+            pending += group.objectGuids;
+    }
+
+    while (!pending.isEmpty()) {
+        const QString parentGuid = pending.takeLast();
+        const QString parentKey = normalizeGuid(parentGuid);
+        if (visited.contains(parentKey))
+            continue;
+        visited.insert(parentKey);
+
+        const fs::path objFile = m_configDir / parentGuid.toStdWString();
+        boost::system::error_code ec;
+        if (!fs::exists(objFile, ec))
+            continue;
+
+        tree* objTree = loadTree(objFile, QStringLiteral("nested-subsystem:") + parentGuid);
+        if (!objTree)
+            continue;
+
+        QVector<ObjectGroup> childGroups;
+        collectGroups(objTree, childGroups);
+        delete objTree;
+
+        for (const auto& childGroup : childGroups) {
+            if (childGroup.objectGuids.isEmpty())
+                continue;
+            result.append(childGroup);
+            if (normalizeGuid(childGroup.typeGuid) == subsystemType)
+                pending += childGroup.objectGuids;
+        }
+    }
+    return result;
 }
 
 QString ConfigStructureReader::resolveName(const QString& objectGuid) const
