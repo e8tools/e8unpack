@@ -1,0 +1,213 @@
+name: Release
+
+# Публикация релизов e8unpack.
+#
+#  * push в release_develop — сборка и тесты, артефакты складываются в Actions
+#    (релиз НЕ создаётся: это проверочный прогон);
+#  * push тега вида v3.0.44 — то же плюс публикация GitHub Release с файлами;
+#  * вручную (workflow_dispatch) — сборка и тесты с любого рефа.
+#
+# Ветка master здесь не участвует.
+
+on:
+  push:
+    branches:
+      - release_develop
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # ─────────────────────────────────────────────────────────────── Linux x86_64
+  linux:
+    name: Linux x86_64
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Получение исходников
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Зависимости
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build \
+            qt6-base-dev \
+            libboost-filesystem-dev libboost-system-dev libboost-iostreams-dev \
+            zlib1g-dev
+
+      - name: Определение версии
+        id: ver
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            V="${GITHUB_REF_NAME#v}"
+          else
+            V="3.0.${GITHUB_RUN_NUMBER}"
+          fi
+          echo "version=${V}"
+          echo "version=${V}" >> "$GITHUB_OUTPUT"
+
+      - name: Конфигурация
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+      - name: Сборка
+        run: cmake --build build -j2
+
+      - name: Тесты
+        run: bash test/run.sh build/v8unpack
+
+      - name: Упаковка tar.gz и .deb
+        run: |
+          set -euo pipefail
+          V="${{ steps.ver.outputs.version }}"
+          NAME="v8unpack-${V}-linux-x86_64"
+          mkdir -p "dist/${NAME}"
+          install -m755 build/v8unpack "dist/${NAME}/v8unpack"
+          install -m644 README.md      "dist/${NAME}/README.md"
+          install -m644 LICENSE        "dist/${NAME}/LICENSE"
+          tar -C dist -czf "dist/${NAME}.tar.gz" "${NAME}"
+
+          # .deb собираем вручную: заготовка debian/ рассчитана на debhelper 9
+          # и устарела, а нам нужен контроль версии прямо из тега.
+          ROOT="dist/deb-root"
+          install -Dm755 build/v8unpack "${ROOT}/usr/bin/v8unpack"
+          install -Dm644 README.md      "${ROOT}/usr/share/doc/v8unpack/README.md"
+          install -Dm644 LICENSE        "${ROOT}/usr/share/doc/v8unpack/copyright"
+          mkdir -p "${ROOT}/DEBIAN"
+          cat > "${ROOT}/DEBIAN/control" <<EOF
+          Package: v8unpack
+          Version: ${V}
+          Section: utils
+          Priority: optional
+          Architecture: amd64
+          Maintainer: e8tools <https://github.com/e8tools/e8unpack>
+          Description: Enterprise 8 unpack tool
+          EOF
+          dpkg-deb --build --root-owner-group "${ROOT}" "dist/v8unpack_${V}_amd64.deb"
+
+          echo "=== файлы ==="
+          ls -lh dist/*.tar.gz dist/*.deb
+
+      - name: Артефакты
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: |
+            dist/*.tar.gz
+            dist/*.deb
+          if-no-files-found: error
+
+  # ─────────────────────────────────────────────────────────── Windows x64 (MinGW)
+  windows:
+    name: Windows x64
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - name: Получение исходников
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: "MSYS2 UCRT64: Qt6, Boost, zlib"
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: false
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-qt6-base
+            mingw-w64-ucrt-x86_64-boost
+            mingw-w64-ucrt-x86_64-zlib
+            zip
+
+      - name: Определение версии
+        id: ver
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            V="${GITHUB_REF_NAME#v}"
+          else
+            V="3.0.${GITHUB_RUN_NUMBER}"
+          fi
+          echo "version=${V}"
+          echo "version=${V}" >> "$GITHUB_OUTPUT"
+
+      - name: Конфигурация
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBoost_USE_STATIC_LIBS=ON \
+            -DZLIB_USE_STATIC_LIBS=ON
+
+      - name: Сборка
+        run: cmake --build build -j2
+
+      - name: Тесты
+        run: bash test/run.sh build/v8unpack.exe
+
+      - name: Упаковка .zip
+        run: |
+          set -euo pipefail
+          V="${{ steps.ver.outputs.version }}"
+          NAME="v8unpack-${V}-win64"
+          mkdir -p "dist/${NAME}"
+          cp build/v8unpack.exe "dist/${NAME}/v8unpack.exe"
+          cp README.md         "dist/${NAME}/README.md"
+          cp LICENSE           "dist/${NAME}/LICENSE"
+          # Qt линкуется динамически — кладём ядро рядом; остальное
+          # (Boost, zlib) собрано статически и в поставку не попадает.
+          for dll in Qt6Core.dll libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
+            if [[ -f "${MINGW_PREFIX}/bin/${dll}" ]]; then
+              cp "${MINGW_PREFIX}/bin/${dll}" "dist/${NAME}/"
+            else
+              echo "не найден ${dll} — пропускаю"
+            fi
+          done
+          echo "=== содержимое ==="
+          ls -l "dist/${NAME}"
+          ( cd dist && zip -r "${NAME}.zip" "${NAME}" )
+          echo "=== зависимости exe ==="
+          objdump -p build/v8unpack.exe | grep -i "DLL Name" || true
+
+      - name: Артефакты
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*.zip
+          if-no-files-found: error
+
+  # ──────────────────────────────────────────────────────── GitHub Release (тег)
+  release:
+    name: Публикация релиза
+    needs: [linux, windows]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Скачивание артефактов
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Что публикуем
+        run: find dist -type f -printf '%s\t%p\n' | sort -k2
+
+      - name: Создание релиза
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/*.deb
+            dist/*.zip
+          generate_release_notes: true
+          fail_on_unmatched_files: true
