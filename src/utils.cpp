@@ -74,7 +74,6 @@ void _itoht64(uint64_t value, char *ht)
 	int_to_hex<uint64_t, 8>(value, ht);
 }
 
-
 int Inflate(const std::string &in_filename, const std::string &out_filename)
 {
 	int ret;
@@ -229,6 +228,7 @@ int Deflate(std::istream &source, std::ostream &dest)
 	return Z_OK;
 
 }
+
 int Inflate(std::istream &source, std::ostream &dest)
 {
 	int ret;
@@ -422,8 +422,7 @@ bool try_inflate(std::vector<char> &data)
 	return false;
 }
 
-bool
-try_inflate(std::istream &source, std::ostream &dest)
+bool try_inflate(std::istream &source, std::ostream &dest)
 {
 	auto gpos = source.tellg();
 	auto ppos = dest.tellp();
@@ -443,8 +442,7 @@ try_inflate(std::istream &source, std::ostream &dest)
 	return true;
 }
 
-bool
-try_inflate(const boost::filesystem::path &source, const boost::filesystem::path &dest)
+bool try_inflate(const boost::filesystem::path &source, const boost::filesystem::path &dest)
 {
 	boost::filesystem::ifstream inf(source, std::ios_base::binary);
 	boost::filesystem::ofstream out(dest, std::ios_base::binary);

@@ -24,6 +24,12 @@ at http://mozilla.org/MPL/2.0/.
 #include <utility>
 #include <memory>
 #include <boost/filesystem/fstream.hpp>
+#include <QDebug>
+#include <QString>
+#include "metadata/MetadataMap.h"
+#include "output/StructuredUnpacker.h"
+#include "output/StructuredPacker.h"
+
 
 namespace v8unpack {
 
@@ -906,6 +912,64 @@ int Parse(const string &filename_in, const string &dirname, const vector< string
     return ret;
 }
 
+int ParseDecompile(const string &filename_in, const string &dirname, const vector< string > &filter)
+{
+    int ret = 0;
+
+    boost::filesystem::ifstream file_in(filename_in, ios_base::binary);
+
+    if (!file_in) {
+        cerr << "Parse. `" << filename_in << "` not found!" << endl;
+        return -1;
+    }
+
+	MetadataMap map;
+	bool mapLoaded = false;
+
+	if (!mapLoaded) {
+		qDebug(
+			"Предупреждение: карта метаданных не загружена. "
+			"Имена объектов будут по GUID.\n");
+	}
+
+	StructuredUnpacker unpacker(QString::fromStdString(filename_in) , QString::fromStdString(dirname), nullptr);
+	if (!unpacker.run()) {
+		qDebug("Ошибка распаковки.\n");
+		return 3;
+	}
+
+
+
+	/*
+	if (opts.useMetadata && !opts.metadataMapFile.isEmpty()) {
+		mapLoaded = map.loadFromJson(opts.metadataMapFile);
+		if (!mapLoaded) {
+			qDebug(
+				"Предупреждение: карта метаданных не загружена. "
+				"Имена объектов будут по GUID.\n");
+		}
+	}
+	*/
+
+
+
+	/*
+
+    ret = RecursiveUnpack(dirname, file_in, filter, true, false);
+
+    if (ret == V8UNPACK_NOT_V8_FILE) {
+        cerr << "Parse. `" << filename_in << "` is not V8 file!" << endl;
+        return ret;
+    }
+
+    cout << "Parse `" << filename_in << "`: ok" << endl << flush;
+
+	*/
+
+    return ret;
+}
+
+
 int CV8File::LoadFileFromFolder(const string &dirname)
 {
 	typedef Format15 format;
@@ -983,7 +1047,7 @@ recursive_pack(const string &in_dirname, const string &out_filename, bool dont_d
 	auto cur_block_addr = format::file_header_t::Size() + format::block_header_t::Size();
 	typename format::elem_addr_t *pTOC;
 	pTOC = new typename format::elem_addr_t[ElemsNum];
-	cur_block_addr += MAX(format::elem_addr_t::Size() * ElemsNum, format::DEFAULT_PAGE_SIZE);
+	cur_block_addr += MAX(format::elem_addr_t::Size() * ElemsNum, format::DEFAULT_PAGE_SIZE_TOC);
 
 	boost::filesystem::ofstream file_out(out_filename, ios_base::binary);
 	//Открываем выходной файл контейнер на запись
@@ -1106,6 +1170,44 @@ int BuildCfFile(const string &in_dirname, const string &out_filename, bool dont_
 
 	return recursive_pack<Format15>(in_dirname, out_filename, dont_deflate);
 }
+
+int BuildCfFileCompile(const string &in_dirname, const string &out_filename, bool dont_deflate)
+{
+	//filename can't be empty
+	if (in_dirname.empty()) {
+		cerr << "Argument error - Set of `in_dirname' argument" << endl;
+		return V8UNPACK_SHOW_USAGE;
+	}
+
+	if (out_filename.empty()) {
+		cerr << "Argument error - Set of `out_filename' argument" << endl;
+		return V8UNPACK_SHOW_USAGE;
+	}
+
+	if (!boost::filesystem::exists(in_dirname)) {
+		cerr << "Source directory does not exist!" << endl;
+		return V8UNPACK_SOURCE_DOES_NOT_EXIST;
+	}
+
+	int compatibility = directory_container_compatibility(in_dirname);
+
+	/*
+	if (compatibility >= VersionFile::COMPATIBILITY_V80316) {
+		return recursive_pack<Format16>(in_dirname, out_filename, dont_deflate);
+	}
+
+	return recursive_pack<Format15>(in_dirname, out_filename, dont_deflate);
+	*/
+	StructuredPacker packer(QString::fromStdString(in_dirname), QString::fromStdString(out_filename), false);
+	if (!packer.run()) {
+		qDebug("Ошибка сборки.\n");
+		return 5;
+	}
+
+	return 0;
+
+}
+
 
 int CV8Elem::Pack(bool deflate)
 {
