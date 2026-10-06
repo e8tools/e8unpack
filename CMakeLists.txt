@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 2.8)
+cmake_minimum_required (VERSION 3.10)
 project (v8unpack)
 
 set (v8unpack_VERSION_MAJOR 3)
@@ -38,11 +38,21 @@ add_executable (v8unpack ${V8UNPACK_SOURCES} ${V8UNPACK_HEADERS} ${RC_FILE})
 
 add_definitions (-DBOOST_ALL_NO_LIB)
 
+# По умолчанию линкуем статический Boost: иначе рядом с v8unpack нужны
+# boost_*.so / boost_*.dll. Динамический вариант включается USE_STATIC_BOOST=OFF.
 option(USE_STATIC_BOOST "Link against static boost libraries" ON)
+option(Boost_USE_MULTITHREADED "Link against multithreaded boost libraries" ON)
+
 if(USE_STATIC_BOOST)
 	set (Boost_USE_STATIC_LIBS ON)
-	set (Boost_USE_MULTITHREADED OFF)
-	set (Boost_USE_STATIC_RUNTIME ON)
+	if(MSVC)
+		set (Boost_USE_STATIC_RUNTIME ON)
+	else()
+		set (Boost_USE_STATIC_RUNTIME OFF)
+	endif()
+else()
+	set (Boost_USE_STATIC_LIBS OFF)
+	set (Boost_USE_STATIC_RUNTIME OFF)
 endif()
 
 find_package (Boost 1.53 REQUIRED COMPONENTS filesystem system iostreams)

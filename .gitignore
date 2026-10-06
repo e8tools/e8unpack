@@ -19,4 +19,4 @@ gmon.out
 
 cmake-build-*/*
 .idea/*
-build-warn/
+build-*/
