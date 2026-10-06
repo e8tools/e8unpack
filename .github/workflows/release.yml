@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Получение исходников
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -38,7 +38,7 @@ jobs:
             build-essential cmake ninja-build \
             qt6-base-dev \
             libboost-filesystem-dev libboost-system-dev libboost-iostreams-dev \
-            zlib1g-dev
+            zlib1g-dev libbz2-dev liblzma-dev libzstd-dev
 
       - name: Определение версии
         id: ver
@@ -58,10 +58,30 @@ jobs:
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
       - name: Сборка
-        run: cmake --build build -j2
+        run: |
+          set +e
+          cmake --build build -j2 > build-step.log 2>&1
+          rc=$?
+          if [ $rc -ne 0 ]; then
+            mapfile -t L < <(tail -40 build-step.log)
+            for l in "${L[@]}"; do echo "::error::$l"; done
+          else
+            tail -3 build-step.log
+          fi
+          exit $rc
 
       - name: Тесты
-        run: bash test/run.sh build/v8unpack
+        run: |
+          set +e
+          bash test/run.sh build/v8unpack > test-step.log 2>&1
+          rc=$?
+          if [ $rc -ne 0 ]; then
+            mapfile -t L < <(tail -40 test-step.log)
+            for l in "${L[@]}"; do echo "::error::$l"; done
+          else
+            cat test-step.log
+          fi
+          exit $rc
 
       - name: Упаковка tar.gz и .deb
         run: |
@@ -113,7 +133,7 @@ jobs:
         shell: msys2 {0}
     steps:
       - name: Получение исходников
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -129,6 +149,8 @@ jobs:
             mingw-w64-ucrt-x86_64-qt6-base
             mingw-w64-ucrt-x86_64-boost
             mingw-w64-ucrt-x86_64-zlib
+            coreutils
+            diffutils
             zip
 
       - name: Определение версии
@@ -150,10 +172,40 @@ jobs:
             -DZLIB_USE_STATIC_LIBS=ON
 
       - name: Сборка
-        run: cmake --build build -j2
+        run: |
+          set +e
+          cmake --build build -j2 > build-step.log 2>&1
+          rc=$?
+          if [ $rc -ne 0 ]; then
+            mapfile -t L < <(tail -40 build-step.log)
+            for l in "${L[@]}"; do echo "::error::$l"; done
+          else
+            tail -3 build-step.log
+          fi
+          exit $rc
 
       - name: Тесты
-        run: bash test/run.sh build/v8unpack.exe
+        run: |
+          set +e
+          bash test/run.sh build/v8unpack.exe > test-step.log 2>&1
+          rc=$?
+          if [ $rc -ne 0 ]; then
+            {
+              echo "=== test/run.sh ==="
+              cat test-step.log
+              echo "=== diff.log ==="
+              cat diff.log 2>/dev/null | head -40
+              echo "=== доступность утилит ==="
+              for t in dd seq expr diff; do
+                printf "%s: %s\n" "$t" "$(command -v $t || echo НЕТ)"
+              done
+            } > diag.log 2>&1
+            mapfile -t L < <(tail -40 diag.log)
+            for l in "${L[@]}"; do echo "::error::$l"; done
+          else
+            cat test-step.log
+          fi
+          exit $rc
 
       - name: Упаковка .zip
         run: |
