@@ -231,6 +231,48 @@ jobs:
           fi
           exit $rc
 
+      - name: Диагностика кириллицы (временно)
+        run: |
+          set +e
+          mkdir -p /tmp/probe
+          cat > /tmp/probe/probe.cpp <<'CPPEOF'
+            #include <cstdio>
+            #include <string>
+            #include <windows.h>
+            #include <boost/filesystem.hpp>
+            
+            int main(int argc, char** argv)
+            {
+              printf("ACP = %u, OEMCP = %u, console output CP = %u\n",
+                     (unsigned)GetACP(), (unsigned)GetOEMCP(), (unsigned)GetConsoleOutputCP());
+            
+              for (int i = 0; i < argc; ++i)
+              {
+                printf("argv[%d]:", i);
+                for (const unsigned char* p = (const unsigned char*)argv[i]; *p; ++p)
+                  printf(" %02X", *p);
+                printf("\n");
+              }
+            
+              const char* cyr = "\xD0\x9F\xD1\x80\xD0\xBE\xD0\xB2\xD0\xB5\xD1\x80\xD0\xBA\xD0\xB0";
+              boost::filesystem::path p(cyr);
+              const std::wstring w = p.wstring();
+              printf("path(utf8).wstring():");
+              for (std::size_t i = 0; i < w.size(); ++i)
+                printf(" %04X", (unsigned)w[i]);
+              printf("\n");
+              printf("exists_utf8 = %d\n", (int)boost::filesystem::exists(cyr));
+              return 0;
+            }
+          CPPEOF
+          g++ -O0 -o /tmp/probe/probe.exe /tmp/probe/probe.cpp -lboost_filesystem 2>&1 | tail -5
+          mkdir -p '/tmp/probe/Проверка'
+          echo '=== зонд: аргумент и путь ==='
+          /tmp/probe/probe.exe 'Проверка' 2>&1
+          echo '=== каталог на диске ==='
+          ls -b /tmp/probe
+          exit 0
+
       - name: Тесты (кириллица в путях)
         run: |
           set +e
