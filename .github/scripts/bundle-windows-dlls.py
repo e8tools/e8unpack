@@ -50,6 +50,14 @@ def imported_dlls(path):
 
 
 def main():
+    # Консоль Windows по умолчанию пишет в cp1252, и русский текст в выводе
+    # роняет скрипт с UnicodeEncodeError. Явно переводим потоки в UTF-8.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
     ap = argparse.ArgumentParser()
     ap.add_argument("--exe", required=True, help="главный исполняемый файл")
     ap.add_argument("--prefix", required=True, help="каталог bin MSYS2 — источник DLL")
