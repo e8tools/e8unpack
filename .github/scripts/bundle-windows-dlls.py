@@ -63,6 +63,7 @@ def main():
     ap.add_argument("--prefix", required=True, help="каталог bin MSYS2 — источник DLL")
     ap.add_argument("--dest", required=True, help="каталог выпуска")
     a = ap.parse_args()
+    os.makedirs(a.dest, exist_ok=True)
 
     index = {}
     for f in os.listdir(a.prefix):
