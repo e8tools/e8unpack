@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <!-- Кодовая страница процесса — UTF-8.
+       Стандартная библиотека (libstdc++ в сборке MinGW) не умеет открывать
+       файл по широкому пути, и boost::filesystem передаёт ей путь, сжатый в
+       узкую строку по ANSI-кодировке процесса: кириллица в имени файла
+       превращалась в мусор и файл не создавался. С UTF-8 в качестве кодовой
+       страницы узкий путь содержит UTF-8 и открывается правильно.
+       Требуется Windows 10 версии 1903 и новее. -->
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
+    </windowsSettings>
+  </application>
+</assembly>

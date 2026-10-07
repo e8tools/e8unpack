@@ -22,3 +22,6 @@ BEGIN
     VALUE "Translation", 0x419, 1251
   END
 END
+
+/* Манифест: кодовая страница процесса UTF-8 (кириллица в путях). */
+1 24 "v8unpack.manifest"

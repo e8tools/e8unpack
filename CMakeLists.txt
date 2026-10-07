@@ -6,6 +6,8 @@ set (v8unpack_VERSION_MINOR 0)
 
 if(WIN32)
 	set(RC_FILE "VersionInfo.rc")
+	# windres ищет файл манифеста, указанный в .rc, по путям включения
+	set (CMAKE_RC_FLAGS "${CMAKE_RC_FLAGS} -I\"${CMAKE_CURRENT_SOURCE_DIR}\"")
 else()
 	set(RC_FILE "")
 endif()
