@@ -229,7 +229,6 @@ jobs:
           else
             cat test-step.log
           fi
-          exit $rc
       - name: Диагностика кириллицы (временно)
         run: |
           set +e
@@ -244,24 +243,22 @@ jobs:
 
             int main(int argc, char** argv)
             {
-              printf("ACP=%u OEMCP=%u consoleCP=%u\n",
-                     (unsigned)GetACP(), (unsigned)GetOEMCP(), (unsigned)GetConsoleOutputCP());
-              for (int i = 0; i < argc; ++i)
-              {
-                printf("argv[%d]:", i);
-                for (const unsigned char* p = (const unsigned char*)argv[i]; *p; ++p) printf(" %02X", *p);
-                printf("\n");
-              }
+              const char* tag = (argc > 2) ? argv[2] : "?";
+              printf("%s ACP=%u argv1=", tag, (unsigned)GetACP());
+              if (argc > 1)
+                for (const unsigned char* q = (const unsigned char*)argv[1]; *q; ++q) printf("%02X", *q);
               const char* cyr = "\xD0\x9F\xD1\x80\xD0\xBE\xD0\xB2\xD0\xB5\xD1\x80\xD0\xBA\xD0\xB0";
               boost::filesystem::path p(cyr);
               const std::wstring w = p.wstring();
-              printf("path(utf8).wstring():");
-              for (std::size_t i = 0; i < w.size(); ++i) printf(" %04X", (unsigned)w[i]);
-              printf("\n");
-              printf("exists_utf8=%d\n", (int)boost::filesystem::exists(cyr));
+              printf(" wstr=");
+              for (std::size_t i = 0; i < w.size(); ++i) printf("%04X", (unsigned)w[i]);
+              printf(" exists_utf8=%d exists_argv=%d\n",
+                     (int)boost::filesystem::exists(cyr),
+                     (argc > 1) ? (int)boost::filesystem::exists(boost::filesystem::path(argv[1])) : -1);
               return 0;
             }
           CPPEOF
+          printf '1 24 "utf8.manifest"\n' > probe.rc
           cat > utf8.manifest <<'MANEOF'
             <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
             <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
@@ -272,27 +269,20 @@ jobs:
               </application>
             </assembly>
           MANEOF
-          printf '1 24 "utf8.manifest"\n' > probe.rc
+          BOOSTFS=$(ls "$MINGW_PREFIX"/lib/libboost_filesystem* 2>/dev/null | head -1)
+          windres probe.rc -O coff -o probe.res 2>/dev/null
+          g++ -std=c++17 -O0 -o probe_plain.exe probe.cpp "$BOOSTFS" > build-plain.log 2>&1
+          rc_plain=$?
+          g++ -std=c++17 -O0 -o probe_utf8.exe probe.cpp probe.res "$BOOSTFS" > build-utf8.log 2>&1
+          rc_utf8=$?
+          ARG=$'\xd0\x9f\xd1\x80\xd0\xbe\xd0\xb2\xd0\xb5\xd1\x80\xd0\xba\xd0\xb0'
+          mkdir -p "/tmp/probe/$ARG"
           {
-            echo '--- windres ---'
-            windres probe.rc -O coff -o probe.res 2>&1; echo "windres exit=$?"
-            echo '--- g++ без манифеста ---'
-            BOOSTFS=$(ls "$MINGW_PREFIX"/lib/libboost_filesystem* 2>/dev/null | head -1)
-            echo "boost filesystem: ${BOOSTFS:-не найдена}"
-            ls -1 "$MINGW_PREFIX"/lib | grep -i boost | head -8
-            g++ -std=c++17 -O0 -o probe_plain.exe probe.cpp "$BOOSTFS" 2>&1 | tail -20; echo "g++ plain exit=${PIPESTATUS[0]}"
-            echo '--- g++ с манифестом UTF-8 ---'
-            g++ -std=c++17 -O0 -o probe_utf8.exe probe.cpp probe.res "$BOOSTFS" 2>&1 | tail -20; echo "g++ manifest exit=${PIPESTATUS[0]}"
-            echo '--- файлы ---'
-            ls -l
-            ARG=$'\xd0\x9f\xd1\x80\xd0\xbe\xd0\xb2\xd0\xb5\xd1\x80\xd0\xba\xd0\xb0'
-            mkdir -p "/tmp/probe/$ARG"
-            echo '--- A) без манифеста ---'
-            ./probe_plain.exe "$ARG" 2>&1
-            echo '--- B) с манифестом UTF-8 ---'
-            ./probe_utf8.exe "$ARG" 2>&1
+            echo "boost=$(basename "${BOOSTFS:-нет}") сборка_без_манифеста=$rc_plain сборка_с_манифестом=$rc_utf8"
+            if [ $rc_plain -eq 0 ]; then ./probe_plain.exe "$ARG" БЕЗ_МАНИФЕСТА; else echo "лог сборки:"; tail -4 build-plain.log; fi
+            if [ $rc_utf8 -eq 0 ]; then ./probe_utf8.exe "$ARG" С_МАНИФЕСТОМ; else echo "лог сборки:"; tail -4 build-utf8.log; fi
           } > probe.log 2>&1
-          mapfile -t L < <(tail -60 probe.log)
+          mapfile -t L < <(cat probe.log)
           for l in "${L[@]}"; do echo "::error::$l"; done
           exit 0
 
