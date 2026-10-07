@@ -92,6 +92,19 @@ jobs:
           fi
           exit $rc
 
+      - name: Тесты (кириллица в путях)
+        run: |
+          set +e
+          bash test/run-cyrillic.sh build/v8unpack > cyr-step.log 2>&1
+          rc=$?
+          if [ $rc -ne 0 ]; then
+            mapfile -t L < <(tail -40 cyr-step.log)
+            for l in "${L[@]}"; do echo "::error::$l"; done
+          else
+            cat cyr-step.log
+          fi
+          exit $rc
+
       - name: Упаковка tar.gz и .deb
         run: |
           set -euo pipefail
@@ -215,6 +228,19 @@ jobs:
             for l in "${L[@]}"; do echo "::error::$l"; done
           else
             cat test-step.log
+          fi
+          exit $rc
+
+      - name: Тесты (кириллица в путях)
+        run: |
+          set +e
+          bash test/run-cyrillic.sh build/v8unpack.exe > cyr-step.log 2>&1
+          rc=$?
+          if [ $rc -ne 0 ]; then
+            mapfile -t L < <(tail -40 cyr-step.log)
+            for l in "${L[@]}"; do echo "::error::$l"; done
+          else
+            cat cyr-step.log
           fi
           exit $rc
 
