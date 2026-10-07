@@ -220,26 +220,40 @@ jobs:
 
       - name: Упаковка .zip
         run: |
-          set -euo pipefail
-          V="${{ steps.ver.outputs.version }}"
-          NAME="v8unpack-${V}-win64"
-          mkdir -p "dist/${NAME}"
-          cp build/v8unpack.exe "dist/${NAME}/v8unpack.exe"
-          cp README.md         "dist/${NAME}/README.md"
-          cp LICENSE           "dist/${NAME}/LICENSE"
-          # Qt и его зависимости линкуются динамически: собираем замыкание
-          # рекурсивно по таблицам импорта. Ручной список пропускал транзитив
-          # (Qt6Core тянет ICU, zstd, pcre2, b2, double-conversion), и на
-          # чистой Windows не хватало libicuuc78.dll.
-          python .github/scripts/bundle-windows-dlls.py \
-            --exe build/v8unpack.exe \
-            --prefix "${MINGW_PREFIX}/bin" \
-            --dest "dist/${NAME}"
-          echo "=== содержимое ==="
-          ls -l "dist/${NAME}"
-          ( cd dist && zip -r "${NAME}.zip" "${NAME}" )
-          echo "=== содержимое каталога выпуска ==="
-          ls -1 "dist/${NAME}" | sort
+          set +e
+          (
+            set -euo pipefail
+            V="${{ steps.ver.outputs.version }}"
+            NAME="v8unpack-${V}-win64"
+            mkdir -p "dist/${NAME}"
+            cp build/v8unpack.exe "dist/${NAME}/v8unpack.exe"
+            cp README.md         "dist/${NAME}/README.md"
+            cp LICENSE           "dist/${NAME}/LICENSE"
+
+            # Qt и его зависимости линкуются динамически: собираем замыкание
+            # рекурсивно по таблицам импорта. Ручной список пропускал транзитив
+            # (Qt6Core тянет ICU, zstd, pcre2, b2, double-conversion), и на
+            # чистой Windows не хватало libicuuc78.dll.
+            PY=python
+            command -v "$PY" >/dev/null 2>&1 || PY=python3
+            echo "интерпретатор: $(command -v "$PY")"
+            "$PY" .github/scripts/bundle-windows-dlls.py \
+              --exe build/v8unpack.exe \
+              --prefix "${MINGW_PREFIX}/bin" \
+              --dest "dist/${NAME}"
+
+            echo "=== каталог выпуска ==="
+            ls -1 "dist/${NAME}" | sort
+            ( cd dist && zip -r "${NAME}.zip" "${NAME}" )
+          ) > pack.log 2>&1
+          rc=$?
+          if [ $rc -ne 0 ]; then
+            mapfile -t L < <(tail -40 pack.log)
+            for l in "${L[@]}"; do echo "::error::$l"; done
+          else
+            cat pack.log
+          fi
+          exit $rc
 
       - name: Артефакты
         uses: actions/upload-artifact@v4
