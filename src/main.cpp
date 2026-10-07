@@ -22,7 +22,18 @@ at http://mozilla.org/MPL/2.0/.
 #include <iostream>
 #include <algorithm>
 #include <sstream>
+#include "ConsoleOutput.h"               // для кириллицы в Windows
 #include <boost/filesystem/fstream.hpp>
+
+#ifdef _WIN32
+#  define NOMINMAX
+#  define WIN32_LEAN_AND_MEAN
+#  include <windows.h>
+#  include <winnls.h>
+#  ifndef CP_UTF8
+#    define CP_UTF8 65001
+#  endif
+#endif
 
 using namespace std;
 using namespace v8unpack;
@@ -46,6 +57,27 @@ int build_nopack(vector<string> &argv);
 int compile(vector<string> &argv);
 int list_files(vector<string> &argv);
 
+static std::atomic_bool g_verbose{false};
+
+static void consoleMessageHandler(QtMsgType type, const QMessageLogContext&, const QString& msg)
+{
+
+    // Отфильтровываем отладочные сообщения, если verbose не включён
+    if (type == QtDebugMsg && !g_verbose.load(std::memory_order_relaxed))
+        return;
+
+    const char* prefix = "";
+    switch (type) {
+        case QtDebugMsg:    prefix = "[D] "; break;
+        case QtInfoMsg:     prefix = "[I] "; break;
+        case QtWarningMsg:  prefix = "[W] "; break;
+        case QtCriticalMsg: prefix = "[C] "; break;
+        case QtFatalMsg:    prefix = "[F] "; break;
+    }
+    v8unpack::writeStderr(QString::fromLatin1(prefix) + msg + QLatin1Char('\n'));
+}
+
+
 int usage(vector<string> &argv)
 {
 	cout << endl;
@@ -68,7 +100,7 @@ int usage(vector<string> &argv)
 	cout << "  -DE[COMPILE]         in_filename        out_dirname [block_name1 block_name2 ...]" << endl;
 	cout << "  -P[ARSE]   -L[IST]   listfile" << endl;
 	cout << "  -B[UILD] [-N[OPACK]] in_dirname         out_filename" << endl;
-	cout << "  -CO[MPILE] кириллица in_dirname         out_filename" << endl;
+	cout << "  -CO[MPILE]           in_dirname         out_filename" << endl;
 	cout << "  -B[UILD] [-N[OPACK]] -L[IST] listfile" << endl;
 	cout << "  -L[IST]              listfile" << endl;
 	
@@ -77,6 +109,8 @@ int usage(vector<string> &argv)
 	cout << "  -E[XAMPLE]" << endl;
 	cout << "  -BAT" << endl;
 	cout << "  -V[ERSION]" << endl;
+
+	writeStderr(QStringLiteral("Сообщение на кириллице.\n"));
 
 	return 0;
 }
@@ -429,6 +463,14 @@ int main(int argc, char* argv[])
 	int arg_base = 1;
 	bool allow_listfile = false;
 	vector<string> args;
+	
+	qInstallMessageHandler(consoleMessageHandler);
+
+	// Включаем диагностику сразу после разбора, чтобы все последующие
+	// qDebug() из модулей были видны (или скрыты) корректно.
+	g_verbose.store(true, std::memory_order_relaxed);
+
+
 	for (int i = 0; i < argc; i++) {
 		args.emplace_back(argv[i]);
 	}
