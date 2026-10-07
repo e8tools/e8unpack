@@ -277,9 +277,9 @@ jobs:
             echo '--- windres ---'
             windres probe.rc -O coff -o probe.res 2>&1; echo "windres exit=$?"
             echo '--- g++ без манифеста ---'
-            g++ -std=c++17 -O0 -o probe_plain.exe probe.cpp 2>&1 | tail -20; echo "g++ plain exit=${PIPESTATUS[0]}"
+            g++ -std=c++17 -O0 -o probe_plain.exe probe.cpp -L"$MINGW_PREFIX/lib" -lboost_filesystem 2>&1 | tail -20; echo "g++ plain exit=${PIPESTATUS[0]}"
             echo '--- g++ с манифестом UTF-8 ---'
-            g++ -std=c++17 -O0 -o probe_utf8.exe probe.cpp probe.res 2>&1 | tail -20; echo "g++ manifest exit=${PIPESTATUS[0]}"
+            g++ -std=c++17 -O0 -o probe_utf8.exe probe.cpp probe.res -L"$MINGW_PREFIX/lib" -lboost_filesystem 2>&1 | tail -20; echo "g++ manifest exit=${PIPESTATUS[0]}"
             echo '--- файлы ---'
             ls -l
             ARG=$'\xd0\x9f\xd1\x80\xd0\xbe\xd0\xb2\xd0\xb5\xd1\x80\xd0\xba\xd0\xb0'
