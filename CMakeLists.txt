@@ -139,5 +139,9 @@ find_package (ZLIB REQUIRED)
 include_directories (${ZLIB_INCLUDE_DIRS})
 target_link_libraries (v8unpack ${ZLIB_LIBRARIES})
 target_link_libraries (v8unpack Qt6::Core)   # <-- добавьте это
+if(WIN32)
+	# CommandLineToArgvW — разбор командной строки в UTF-16 (кириллица в путях)
+	target_link_libraries (v8unpack shell32)
+endif()
 
 #target_link_libraries(v8unpack PRIVATE Qt6::Core)

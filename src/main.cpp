@@ -18,6 +18,7 @@ at http://mozilla.org/MPL/2.0/.
 //
 
 #include "V8File.h"
+#include "FilePath.h"
 #include "version.h"
 #include <iostream>
 #include <algorithm>
@@ -109,8 +110,6 @@ int usage(vector<string> &argv)
 	cout << "  -E[XAMPLE]" << endl;
 	cout << "  -BAT" << endl;
 	cout << "  -V[ERSION]" << endl;
-
-	writeStderr(QStringLiteral("Сообщение на кириллице.\n"));
 
 	return 0;
 }
@@ -435,7 +434,7 @@ handler_t get_run_mode(const vector<string> &args, int &arg_base, bool &allow_li
 
 void read_param_file(const char *filename, vector< vector<string> > &list)
 {
-	boost::filesystem::ifstream in(filename);
+	boost::filesystem::ifstream in(to_path(filename));
 	string line;
 	while (getline(in, line)) {
 
@@ -471,9 +470,9 @@ int main(int argc, char* argv[])
 	g_verbose.store(true, std::memory_order_relaxed);
 
 
-	for (int i = 0; i < argc; i++) {
-		args.emplace_back(argv[i]);
-	}
+	// Командная строка Windows приходит в ANSI-кодировке процесса: кириллица
+	// в путях терялась бы ещё до входа в main(). Забираем её в UTF-8.
+	args = command_line_args(argc, argv);
 	handler_t handler = get_run_mode(args, arg_base, allow_listfile);
 
 	vector<string> cli_args;

@@ -223,7 +223,7 @@ bool ConfigStructureReader::loadRoot()
     boost::system::error_code ec;
     if (!fs::exists(rootFile, ec)) {
         qWarning() << "ConfigStructureReader: файл root не найден:"
-                   << QString::fromStdString(rootFile.string());
+                   << QString::fromStdWString(rootFile.wstring());
         return false;
     }
 
@@ -258,7 +258,7 @@ bool ConfigStructureReader::loadObjectGroups()
     boost::system::error_code ec;
     if (!fs::exists(structFile, ec)) {
         qWarning() << "ConfigStructureReader: файл структуры не найден:"
-                   << QString::fromStdString(structFile.string());
+                   << QString::fromStdWString(structFile.wstring());
         return false;
     }
 
@@ -365,7 +365,7 @@ QString ConfigStructureReader::resolveName(const QString& objectGuid) const
     boost::system::error_code ec;
     if (!fs::exists(objFile, ec)) {
         qWarning() << "ConfigStructureReader: файл объекта не найден:"
-                   << QString::fromStdString(objFile.string());
+                   << QString::fromStdWString(objFile.wstring());
         return {};
     }
 

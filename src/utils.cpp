@@ -5,6 +5,7 @@ was not distributed with this file, You can obtain one
 at http://mozilla.org/MPL/2.0/.
 ----------------------------------------------------------*/
 #include "V8File.h"
+#include "FilePath.h"
 #include <iostream>
 #include "zlib.h"
 #include <boost/filesystem/fstream.hpp>
@@ -87,7 +88,7 @@ int Inflate(const std::string &in_filename, const std::string &out_filename)
 
 	} else {
 
-		boost::filesystem::path inf(in_filename);
+		boost::filesystem::path inf = to_path(in_filename);
 		input.reset(new boost::filesystem::ifstream(inf, std::ios_base::binary));
 
 		if (!*input) {
@@ -105,7 +106,7 @@ int Inflate(const std::string &in_filename, const std::string &out_filename)
 
 	} else {
 
-		boost::filesystem::path ouf(out_filename);
+		boost::filesystem::path ouf = to_path(out_filename);
 		output.reset(new boost::filesystem::ofstream (ouf, std::ios_base::binary));
 
 		if (!*output) {
@@ -131,7 +132,7 @@ int Deflate(const std::string &in_filename, const std::string &out_filename)
 
 	} else {
 
-		boost::filesystem::path inf(in_filename);
+		boost::filesystem::path inf = to_path(in_filename);
 		input.reset(new boost::filesystem::ifstream(inf, std::ios_base::binary));
 
 		if (!*input) {
@@ -149,7 +150,7 @@ int Deflate(const std::string &in_filename, const std::string &out_filename)
 
 	} else {
 
-		boost::filesystem::path ouf(out_filename);
+		boost::filesystem::path ouf = to_path(out_filename);
 		output.reset(new boost::filesystem::ofstream (ouf, std::ios_base::binary));
 
 		if (!*output) {
@@ -167,7 +168,7 @@ int Deflate(const std::string &in_filename, const std::string &out_filename)
 
 int Deflate(std::istream &source, const std::string &out_filename)
 {
-	std::ofstream dest(out_filename, std::ios_base::binary);
+	boost::filesystem::ofstream dest(to_path(out_filename), std::ios_base::binary);
 	return Deflate(source, dest);
 }
 
