@@ -266,11 +266,16 @@ jobs:
             }
           CPPEOF
           g++ -O0 -o /tmp/probe/probe.exe /tmp/probe/probe.cpp -lboost_filesystem 2>&1 | tail -5
-          mkdir -p '/tmp/probe/Проверка'
-          echo '=== зонд: аргумент и путь ==='
-          /tmp/probe/probe.exe 'Проверка' 2>&1
-          echo '=== каталог на диске ==='
-          ls -b /tmp/probe
+          ARG=$'\xd0\x9f\xd1\x80\xd0\xbe\xd0\xb2\xd0\xb5\xd1\x80\xd0\xba\xd0\xb0'
+          mkdir -p "/tmp/probe/$ARG"
+          {
+            echo '=== probe: codepage, argv, path ==='
+            /tmp/probe/probe.exe "$ARG" 2>&1
+            echo '=== directory on disk ==='
+            ls -b /tmp/probe
+          } > probe.log 2>&1
+          mapfile -t L < <(cat probe.log)
+          for l in "${L[@]}"; do echo "::error::$l"; done
           exit 0
 
       - name: Тесты (кириллица в путях)
