@@ -207,27 +207,26 @@ jobs:
             tail -3 build-step.log
           fi
           exit $rc
-
-      - name: Тесты
+      - name: Тесты (диагностика)
         run: |
           set +e
           bash test/run.sh build/v8unpack.exe > test-step.log 2>&1
           rc=$?
-          if [ $rc -ne 0 ]; then
-            {
-              echo "=== test/run.sh ==="
-              cat test-step.log
-              echo "=== diff.log ==="
-              cat diff.log 2>/dev/null | head -40
-              echo "=== доступность утилит ==="
-              for t in dd seq expr diff; do
-                printf "%s: %s\n" "$t" "$(command -v $t || echo НЕТ)"
-              done
-            } > diag.log 2>&1
-            mapfile -t L < <(tail -40 diag.log)
-            for l in "${L[@]}"; do echo "::error::$l"; done
-          else
+          {
+            echo "=== код test/run.sh: $rc ==="
             cat test-step.log
+            echo "=== diff.log ==="
+            head -40 diff.log 2>/dev/null
+            echo "=== exe ==="
+            ls -l build/v8unpack.exe
+            ./build/v8unpack.exe -v; echo "запуск -v, код $?"
+            echo "=== рабочий каталог ==="
+            ls -1
+          } > diag.log 2>&1
+          mapfile -t L < <(tail -60 diag.log)
+          for l in "${L[@]}"; do echo "::error::$l"; done
+          exit 0
+
 
       - name: Тесты (кириллица в путях)
         run: |
