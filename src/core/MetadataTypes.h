@@ -60,6 +60,7 @@ constexpr auto md_WebSocketClients            = "WebSocket-клиенты";
 constexpr auto md_XDTOPackages                = "XDTO-пакеты";
 constexpr auto md_IntegrationServices         = "Сервисы интеграции";
 constexpr auto md_Sequences                   = "Последовательности";
+constexpr auto md_Numerators                  = "Нумераторы";
 
 constexpr auto  GUID_Subsystems                  = "37f2fa9a-b276-11d4-9435-004095e12fc7";
 constexpr auto  GUID_CommonModules               = "0fe48980-252d-11d6-a3c7-0050bae0a776";

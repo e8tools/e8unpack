@@ -76,6 +76,17 @@ public:
     /// @param objGuid — GUID объекта конфигурации
     QVector<SectionInfo> resolveSections(const QString& objGuid) const;
 
+    /// Владелец и имя элемента, найденные по узлу {1,0,<GUID>},"<Имя>".
+    struct ElementOwner {
+        QString ownerGuid;   // GUID объекта-владельца (пусто — элемент сам себе объект)
+        QString name;        // имя элемента
+    };
+
+    /// Найти имена (и владельцев) элементов по их GUID.
+    /// Сначала смотрим собственный файл <configDir>/<GUID>, затем —
+    /// тексты объектов конфигурации (там лежат, например, обработчики команд).
+    QHash<QString, ElementOwner> findElementOwners(const QStringList& elementGuids) const;
+
 private:
     fs::path m_configDir;
     QString m_configGuid;              // GUID файла структуры конфигурации

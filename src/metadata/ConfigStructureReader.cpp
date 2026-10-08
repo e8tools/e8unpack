@@ -60,6 +60,40 @@ QString tryExtractGuidFromNode(tree* node)
     return {};
 }
 
+
+/// Обход дерева: узел {1,0,<guid>} — имя лежит в следующем sibling-узле-строке.
+QString findIdentityNameInTree(tree* node, const QString& guidLower)
+{
+    if (!node) return {};
+
+    if (node->get_num_subnode() == 3) {
+        tree* c0 = node->get_subnode(0);
+        tree* c1 = node->get_subnode(1);
+        tree* c2 = node->get_subnode(2);
+
+        if (c0 && c1 && c2
+            && c0->get_type() == nd_number && c0->get_value() == QLatin1String("1")
+            && c1->get_type() == nd_number && c1->get_value() == QLatin1String("0")
+            && c2->get_type() == nd_guid
+            && c2->get_value().compare(guidLower, Qt::CaseInsensitive) == 0)
+        {
+            for (tree* t = node->get_next(); t; t = t->get_next()) {
+                if (t->get_type() == nd_string && !t->get_value().isEmpty())
+                    return t->get_value();
+                if (t->get_type() == nd_list)
+                    break;
+            }
+        }
+    }
+
+    for (int i = 0; i < node->get_num_subnode(); ++i) {
+        const QString found = findIdentityNameInTree(node->get_subnode(i), guidLower);
+        if (!found.isEmpty())
+            return found;
+    }
+    return {};
+}
+
 } // namespace
 
 
@@ -402,6 +436,65 @@ QVector<SectionInfo> ConfigStructureReader::resolveSections(const QString &objGu
     return result;
 
 }
+
+QHash<QString, ConfigStructureReader::ElementOwner>
+ConfigStructureReader::findElementOwners(const QStringList& elementGuids) const
+{
+    QHash<QString, ElementOwner> result;
+
+    QSet<QString> wanted;
+    for (const QString& g : elementGuids)
+        wanted.insert(normalizeGuid(g));
+    if (wanted.isEmpty())
+        return result;
+
+    boost::system::error_code ec;
+
+    // 1) Собственные файлы элементов — имя берём у самого элемента.
+    for (const QString& g : wanted) {
+        const fs::path f = m_configDir / g.toStdWString();
+        if (!fs::exists(f, ec))
+            continue;
+        tree* t = loadTree(f, QStringLiteral("element:") + g);
+        if (!t) continue;
+        const QString nm = findIdentityNameInTree(t, g);
+        delete t;
+        if (!nm.isEmpty()) {
+            ElementOwner eo;
+            eo.name = nm;
+            result.insert(g, eo);
+        }
+    }
+
+    // 2) Тексты объектов конфигурации — там же находим владельца.
+    QStringList owners;
+    for (const ObjectGroup& group : m_groups)
+        for (const QString& og : group.objectGuids)
+            owners.append(normalizeGuid(og));
+    if (!m_configGuid.isEmpty())
+        owners.append(m_configGuid);
+
+    for (const QString& ownerGuid : owners) {
+        const fs::path f = m_configDir / ownerGuid.toStdWString();
+        if (!fs::exists(f, ec))
+            continue;
+        tree* t = loadTree(f, QStringLiteral("owner:") + ownerGuid);
+        if (!t) continue;
+        for (const QString& g : wanted) {
+            const QString nm = findIdentityNameInTree(t, g);
+            if (nm.isEmpty())
+                continue;
+            ElementOwner eo;
+            eo.ownerGuid = ownerGuid;
+            eo.name      = nm;
+            result.insert(g, eo);
+        }
+        delete t;
+    }
+
+    return result;
+}
+
 
 QHash<QString, QString>
 ConfigStructureReader::resolveAllNames()

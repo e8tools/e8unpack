@@ -179,6 +179,12 @@ bool StructuredUnpacker::indexChildElements()
     const QString effectiveDir = QFileInfo::exists(QDir(configDir).filePath("root")) ? configDir : configDirAlt;
 
     ConfigStructureReader reader(effectiveDir.toStdWString());
+    // Группы нужны и для секций, и для поиска владельцев элементов
+    // по текстам объектов (проход 2).
+    if (!reader.loadRoot())
+        qWarning() << "StructuredUnpacker: indexChildElements: root не прочитан";
+    if (!reader.loadObjectGroups())
+        qWarning() << "StructuredUnpacker: indexChildElements: группы не прочитаны";
 
     for (const auto& g : m_groups_cache) {
         for (const QString& objGuid : g.objectGuids) {
@@ -198,10 +204,89 @@ bool StructuredUnpacker::indexChildElements()
         }
     }
 
+    // ── Проход 1а: имена элементов секций (нужны для имён подкаталогов) ──
+    {
+        QStringList childGuids;
+        for (auto it = m_childIndex.cbegin(); it != m_childIndex.cend(); ++it)
+            childGuids.append(it.key());
+
+        const auto found = reader.findElementOwners(childGuids);
+        for (auto it = found.cbegin(); it != found.cend(); ++it) {
+            if (!it.value().name.isEmpty())
+                m_nameCache.insert(it.key(), it.value().name);
+        }
+    }
+
+    // ── Проход 2: элементы, на которые объект ссылается идентификационным
+    // узлом {1,0,<GUID>},"<Имя>", но которых нет в списках секций
+    // (например, обработчики команд). Владельца ищем по текстам объектов.
+    {
+        const QSet<QString> candidates = unplacedMemberGuids();
+        if (!candidates.isEmpty()) {
+            QStringList list;
+            for (const QString& g : candidates)
+                list.append(g);
+
+            const QHash<QString, ConfigStructureReader::ElementOwner> owners =
+                reader.findElementOwners(list);
+
+            for (auto it = owners.cbegin(); it != owners.cend(); ++it) {
+                const QString childGuid = it.key();
+                const ConfigStructureReader::ElementOwner& eo = it.value();
+
+                if (eo.ownerGuid.isEmpty())
+                    continue;                       // владелец неизвестен — оставляем как есть
+                if (eo.ownerGuid.compare(m_configGuid, Qt::CaseInsensitive) == 0)
+                    continue;                       // элементы самой конфигурации не переносим
+                if (m_childIndex.contains(childGuid) || m_typeOf.contains(childGuid))
+                    continue;                       // уже размещён или объект верхнего уровня
+
+                ChildInfo info;
+                info.parentGuid  = eo.ownerGuid;
+                info.parentName  = m_nameCache.value(eo.ownerGuid, eo.ownerGuid);
+                info.parentType  = m_typeOf.value(eo.ownerGuid, serviceFolderName());
+                // Обработчики команд объекта/формы — в подкаталог «Команды»,
+                // прочие неразобранные элементы — в «Элементы».
+                info.sectionName = eo.name.startsWith(QStringLiteral("Команда"), Qt::CaseInsensitive)
+                                       ? QStringLiteral("Команды")
+                                       : QStringLiteral("Элементы");
+
+                m_childIndex.insert(childGuid, info);
+                if (!eo.name.isEmpty())
+                    m_nameCache.insert(childGuid, eo.name);
+            }
+        }
+    }
+
     qDebug() << "StructuredUnpacker: дочерних элементов проиндексировано:"
              << m_childIndex.size();
 
     return !m_childIndex.isEmpty();
+}
+
+QSet<QString> StructuredUnpacker::unplacedMemberGuids() const
+{
+    QSet<QString> result;
+
+    boost::system::error_code ec;
+    const fs::path tempRoot(m_tempDir.toStdWString());
+
+    for (const auto& entry : fs::directory_iterator(tempRoot, ec)) {
+        if (ec) break;
+
+        const QString name = QString::fromStdWString(entry.path().filename().wstring());
+        const QString base = baseGuidFromFileName(name);
+        if (!looksLikeGuid(base))
+            continue;
+
+        const QString key = base.toLower();
+        if (key == m_configGuid.toLower()) continue;
+        if (m_typeOf.contains(key) || m_childIndex.contains(key)) continue;
+        if (isServiceName(base)) continue;
+
+        result.insert(key);
+    }
+    return result;
 }
 
 QString StructuredUnpacker::targetRelativePath(const fs::path &rel, const QString &guid, const QString &parentGuid) const
@@ -474,7 +559,12 @@ bool StructuredUnpacker::buildAndApplyPlan()
         }
         else if (m_childIndex.contains(key)) {
             const ChildInfo info = m_childIndex.value(key);
-            targetRel = info.parentType + "/" + info.parentName + "/" + info.sectionName + "/" + name;
+            // Элемент кладём в подкаталог с его именем — как общие формы:
+            //   <Тип>/<Имя объекта>/Формы/<Имя формы>/<GUID элемента>
+            const QString childName = m_nameCache.value(key);
+            const QString folder = childName.isEmpty() ? QString() : childName + "/";
+            targetRel = info.parentType + "/" + info.parentName + "/"
+                        + info.sectionName + "/" + folder + name;
         }
         else {
             targetRel = serviceFolderName() + "/" + name;

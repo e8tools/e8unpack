@@ -40,6 +40,9 @@ static QHash<QString, QString> buildTypes()
     m.insert(GUID_StyleItems,          QString("Общие/")+QString(md_StyleItems));
     m.insert(GUID_Styles,              QString("Общие/")+QString(md_Styles));
     m.insert(GUID_Languages,           QString("Общие/")+QString(md_Languages));
+    m.insert(GUID_Interfaces,          QString("Общие/")+QString(md_Interfaces));
+    m.insert(GUID_Numerators,          QString("Общие/")+QString(md_Numerators));
+    m.insert(GUID_Sequences,           QString("Общие/")+QString(md_Sequences));
 
     /// Основные метаданные
     ///

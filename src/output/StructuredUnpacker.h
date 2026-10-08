@@ -10,6 +10,7 @@
 #include <QVector>
 #include "src/metadata/ConfigStructureReader.h"
 #include <QHash>
+#include <QSet>
 #include "src/output/UnpackManifest.h"
 
 
@@ -97,6 +98,10 @@ private:
     /// Построить карту «дочерний элемент → родительский объект»
     /// на основе разбора секций каждого объекта.
     bool indexChildElements();
+
+    /// GUID-ы элементов верхнего уровня временного каталога, для которых
+    /// ещё не найден владелец (кандидаты на поиск по текстам объектов).
+    QSet<QString> unplacedMemberGuids() const;
     bool flattenModuleEntries();
 
     QVector<ObjectGroup> m_groups_cache;
