@@ -375,27 +375,58 @@ jobs:
           echo "--- описание ---"
           cat dist/release-body.md
 
-      - name: Создание/обновление релиза
+      - name: Создание релиза и загрузка артефактов
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/*.deb
+            dist/*.zip
+          fail_on_unmatched_files: true
+
+      # Описание ставим явно через API: так результат проверяем, а итог
+      # печатается аннотацией (логи Actions без входа в аккаунт не читаются).
+      - name: Описание релиза в GitHub
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
           V="${GITHUB_REF_NAME}"
-          ls -1 dist/*.tar.gz dist/*.deb dist/*.zip
+          API="https://api.github.com/repos/${GITHUB_REPOSITORY}"
 
-          if gh release view "$V" >/dev/null 2>&1; then
-            echo "релиз $V уже есть — обновляем описание"
-            gh release edit "$V" --title "$V" --notes-file dist/release-body.md
-          else
-            echo "создаём релиз $V"
-            gh release create "$V" --title "$V" --notes-file dist/release-body.md
+          if [ ! -s dist/release-body.md ]; then
+            echo "::error::описание dist/release-body.md отсутствует или пусто"
+            exit 1
+          fi
+          echo "::notice::описание для ${V}: $(wc -c < dist/release-body.md) байт"
+
+          python3 - <<'PY' > /tmp/body.json
+          import json
+          print(json.dumps({"body": open("dist/release-body.md", encoding="utf-8").read()}))
+          PY
+
+          ID="$(curl -sS -H "Authorization: Bearer ${GH_TOKEN}" \
+                       -H "Accept: application/vnd.github+json" \
+                       "${API}/releases/tags/${V}" \
+                | python3 -c "import json,sys;print(json.load(sys.stdin).get('id',''))")"
+          if [ -z "$ID" ]; then
+            echo "::error::релиз ${V} не найден через API"
+            exit 1
           fi
 
-          gh release upload "$V" dist/*.tar.gz dist/*.deb dist/*.zip --clobber
+          curl -sS -X PATCH \
+               -H "Authorization: Bearer ${GH_TOKEN}" \
+               -H "Accept: application/vnd.github+json" \
+               -H "Content-Type: application/json" \
+               --data @/tmp/body.json \
+               "${API}/releases/${ID}" > /tmp/rel.json
 
-          # Итог печатаем в аннотацию: логи Actions без входа не читаются,
-          # а аннотации доступны анонимно.
-          gh release view "$V" --json tagName,name,url,body,files \
-            --template '{{.tagName}} | файлов: {{len .files}} | описание: {{len .body}} символов | {{.url}}'
-          echo
-          echo "::notice::релиз ${V}: описание $(wc -c < dist/release-body.md) байт"
+          python3 -c "
+          import json
+          d = json.load(open('/tmp/rel.json'))
+          if 'tag_name' not in d:
+              print('::error::не удалось обновить описание: %s' % str(d)[:200]); raise SystemExit(1)
+          print('::notice::%s: описание %d символов, файлов %d, %s'
+                % (d['tag_name'], len(d['body'] or ''), len(d['assets']), d['html_url']))
+          print(d['body'])
+          "
