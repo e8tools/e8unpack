@@ -66,7 +66,13 @@ jobs:
           docker run --rm -v "$PWD:/src" -w /src \
             -e "VERSION=${VERSION}" -e LANG=C.UTF-8 -e LC_ALL=C.UTF-8 \
             debian:12 bash -c '
-              set -euo pipefail
+              set -Eeuo pipefail
+              # Весь вывод — в один поток: иначе docker перемешивает stdout и
+              # stderr и настоящая ошибка не попадает в конец лога.
+              exec 2>&1
+              trap "echo \"=== ОШИБКА на этапе: \${STAGE:-неизвестно}: \${BASH_COMMAND}\"" ERR
+
+              STAGE="apt: установка зависимостей"
               apt-get update -qq
               apt-get install -y --no-install-recommends \
                 build-essential cmake ninja-build python3 patchelf diffutils \
@@ -74,19 +80,23 @@ jobs:
                 libboost-filesystem-dev libboost-system-dev libboost-iostreams-dev \
                 zlib1g-dev libbz2-dev liblzma-dev libzstd-dev
 
+              STAGE="cmake: конфигурация"
               cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+              STAGE="сборка"
               cmake --build build -j"$(nproc)"
 
+              STAGE="тесты"
               bash test/run.sh build/v8unpack
               bash test/run-cyrillic.sh build/v8unpack
 
+              STAGE="упаковка: архив"
               NAME="v8unpack-${VERSION}-linux-x86_64"
               mkdir -p "dist/${NAME}/lib"
               install -m755 build/v8unpack "dist/${NAME}/v8unpack"
               install -m644 README.md      "dist/${NAME}/README.md"
               install -m644 LICENSE        "dist/${NAME}/LICENSE"
 
-              echo "=== зависимости, которые кладём рядом ==="
               python3 .github/scripts/bundle-linux-libs.py \
                 --exe "dist/${NAME}/v8unpack" --dest "dist/${NAME}/lib"
 
@@ -94,12 +104,12 @@ jobs:
               # $ORIGIN/../lib/v8unpack — для установленного из .deb
               patchelf --set-rpath "\$ORIGIN/lib:\$ORIGIN/../lib/v8unpack" "dist/${NAME}/v8unpack"
 
-              echo "=== проверка, что замыкание внутри каталога ==="
+              STAGE="проверка замыкания зависимостей"
               python3 .github/scripts/bundle-linux-libs.py --check --dir "dist/${NAME}"
 
               tar -C dist -czf "dist/${NAME}.tar.gz" "${NAME}"
 
-              # .deb — бинарник и те же библиотеки (в Astra Linux Qt6 нет)
+              STAGE="упаковка: .deb"
               ROOT="dist/deb-root"
               install -Dm755 "dist/${NAME}/v8unpack" "${ROOT}/usr/bin/v8unpack"
               mkdir -p "${ROOT}/usr/lib/v8unpack"
@@ -118,6 +128,7 @@ jobs:
                 > "${ROOT}/DEBIAN/control"
               dpkg-deb --build --root-owner-group "${ROOT}" "dist/v8unpack_${VERSION}_amd64.deb"
 
+              STAGE="готово"
               echo "=== файлы ==="
               ls -lh dist/*.tar.gz dist/*.deb
               echo "=== состав архива ==="
@@ -125,8 +136,8 @@ jobs:
             ' > linux-step.log 2>&1
           rc=$?
           if [ $rc -ne 0 ]; then
-            mapfile -t L < <(tail -40 linux-step.log)
-            for l in "${L[@]}"; do echo "::error::$l"; done
+            echo "::error::шаг завершился с кодом $rc"
+            tail -60 linux-step.log | sed "s/^/::error::/"
           else
             cat linux-step.log
           fi
