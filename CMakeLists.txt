@@ -38,16 +38,15 @@ add_executable (v8unpack ${V8UNPACK_SOURCES} ${V8UNPACK_HEADERS} ${RC_FILE})
 
 add_definitions (-DBOOST_ALL_NO_LIB)
 
-# По умолчанию используем динамический Boost (работает на Linux/Ubuntu)
-option(USE_STATIC_BOOST "Link against static boost libraries" OFF)
+option(USE_STATIC_BOOST "Link against static boost libraries" ON)
 if(USE_STATIC_BOOST)
 	set (Boost_USE_STATIC_LIBS ON)
 	set (Boost_USE_MULTITHREADED OFF)
 	set (Boost_USE_STATIC_RUNTIME ON)
 else()
 	set (Boost_USE_STATIC_LIBS OFF)
-	set (Boost_USE_STATIC_RUNTIME OFF)
 	set (Boost_USE_MULTITHREADED ON)
+	set (Boost_USE_STATIC_RUNTIME OFF)
 endif()
 
 find_package (Boost 1.53 REQUIRED COMPONENTS filesystem system iostreams)
