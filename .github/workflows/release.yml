@@ -28,6 +28,13 @@ permissions:
 
 jobs:
   # ─────────────────────────────────────────────────────────────── Linux x86_64
+  # Сборка идёт в контейнере Debian 12, а не на ubuntu-24.04. У ubuntu-24.04
+  # glibc 2.39 и GCC 13, и бинарник требует GLIBC_2.38 / GLIBCXX_3.4.32: на
+  # Astra Linux и дистрибутивах постарше это «cannot open shared object file»
+  # и «version `GLIBC_2.38' not found». Debian 12 даёт glibc 2.36, GCC 12 и
+  # Qt 6.4, а несистемные библиотеки (Qt, ICU, glib, pcre2, zstd, zlib, b2,
+  # double-conversion, libstdc++, libgcc, libgomp) складываются в архив рядом
+  # с бинарником — на машине пользователя не требуется ни Qt6, ни что-либо ещё.
   linux:
     name: Linux x86_64
     runs-on: ubuntu-24.04
@@ -38,15 +45,6 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-
-      - name: Зависимости
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
-            build-essential cmake ninja-build \
-            qt6-base-dev \
-            libboost-filesystem-dev libboost-system-dev libboost-iostreams-dev \
-            zlib1g-dev libbz2-dev liblzma-dev libzstd-dev
 
       - name: Определение версии
         id: ver
@@ -60,82 +58,79 @@ jobs:
           echo "version=${V}"
           echo "version=${V}" >> "$GITHUB_OUTPUT"
 
-      - name: Конфигурация
-        run: |
-          cmake -S . -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-
-      - name: Сборка
+      - name: Сборка, тесты и упаковка (Debian 12)
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
         run: |
           set +e
-          cmake --build build -j2 > build-step.log 2>&1
+          docker run --rm -v "$PWD:/src" -w /src \
+            -e "VERSION=${VERSION}" -e LANG=C.UTF-8 -e LC_ALL=C.UTF-8 \
+            debian:12 bash -c '
+              set -euo pipefail
+              apt-get update -qq
+              apt-get install -y --no-install-recommends \
+                build-essential cmake ninja-build python3 patchelf diffutils \
+                qt6-base-dev \
+                libboost-filesystem-dev libboost-system-dev libboost-iostreams-dev \
+                zlib1g-dev libbz2-dev liblzma-dev libzstd-dev
+
+              cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+              cmake --build build -j"$(nproc)"
+
+              bash test/run.sh build/v8unpack
+              bash test/run-cyrillic.sh build/v8unpack
+
+              NAME="v8unpack-${VERSION}-linux-x86_64"
+              mkdir -p "dist/${NAME}/lib"
+              install -m755 build/v8unpack "dist/${NAME}/v8unpack"
+              install -m644 README.md      "dist/${NAME}/README.md"
+              install -m644 LICENSE        "dist/${NAME}/LICENSE"
+
+              echo "=== зависимости, которые кладём рядом ==="
+              python3 .github/scripts/bundle-linux-libs.py \
+                --exe "dist/${NAME}/v8unpack" --dest "dist/${NAME}/lib"
+
+              # $ORIGIN/lib — для распакованного архива,
+              # $ORIGIN/../lib/v8unpack — для установленного из .deb
+              patchelf --set-rpath "\$ORIGIN/lib:\$ORIGIN/../lib/v8unpack" "dist/${NAME}/v8unpack"
+
+              echo "=== проверка, что замыкание внутри каталога ==="
+              python3 .github/scripts/bundle-linux-libs.py --check --dir "dist/${NAME}"
+
+              tar -C dist -czf "dist/${NAME}.tar.gz" "${NAME}"
+
+              # .deb — бинарник и те же библиотеки (в Astra Linux Qt6 нет)
+              ROOT="dist/deb-root"
+              install -Dm755 "dist/${NAME}/v8unpack" "${ROOT}/usr/bin/v8unpack"
+              mkdir -p "${ROOT}/usr/lib/v8unpack"
+              cp -a "dist/${NAME}/lib/." "${ROOT}/usr/lib/v8unpack/"
+              install -Dm644 README.md "${ROOT}/usr/share/doc/v8unpack/README.md"
+              install -Dm644 LICENSE   "${ROOT}/usr/share/doc/v8unpack/copyright"
+              mkdir -p "${ROOT}/DEBIAN"
+              printf "%s\n" \
+                "Package: v8unpack" \
+                "Version: ${VERSION}" \
+                "Section: utils" \
+                "Priority: optional" \
+                "Architecture: amd64" \
+                "Maintainer: e8tools <https://github.com/e8tools/e8unpack>" \
+                "Description: Enterprise 8 unpack tool" \
+                > "${ROOT}/DEBIAN/control"
+              dpkg-deb --build --root-owner-group "${ROOT}" "dist/v8unpack_${VERSION}_amd64.deb"
+
+              echo "=== файлы ==="
+              ls -lh dist/*.tar.gz dist/*.deb
+              echo "=== состав архива ==="
+              tar tzf "dist/${NAME}.tar.gz" | head -25
+            ' > linux-step.log 2>&1
           rc=$?
           if [ $rc -ne 0 ]; then
-            mapfile -t L < <(tail -40 build-step.log)
+            mapfile -t L < <(tail -40 linux-step.log)
             for l in "${L[@]}"; do echo "::error::$l"; done
           else
-            tail -3 build-step.log
+            cat linux-step.log
           fi
           exit $rc
-
-      - name: Тесты
-        run: |
-          set +e
-          bash test/run.sh build/v8unpack > test-step.log 2>&1
-          rc=$?
-          if [ $rc -ne 0 ]; then
-            mapfile -t L < <(tail -40 test-step.log)
-            for l in "${L[@]}"; do echo "::error::$l"; done
-          else
-            cat test-step.log
-          fi
-          exit $rc
-
-      - name: Тесты (кириллица в путях)
-        run: |
-          set +e
-          bash test/run-cyrillic.sh build/v8unpack > cyr-step.log 2>&1
-          rc=$?
-          if [ $rc -ne 0 ]; then
-            mapfile -t L < <(tail -40 cyr-step.log)
-            for l in "${L[@]}"; do echo "::error::$l"; done
-          else
-            cat cyr-step.log
-          fi
-          exit $rc
-
-      - name: Упаковка tar.gz и .deb
-        run: |
-          set -euo pipefail
-          V="${{ steps.ver.outputs.version }}"
-          NAME="v8unpack-${V}-linux-x86_64"
-          mkdir -p "dist/${NAME}"
-          install -m755 build/v8unpack "dist/${NAME}/v8unpack"
-          install -m644 README.md      "dist/${NAME}/README.md"
-          install -m644 LICENSE        "dist/${NAME}/LICENSE"
-          tar -C dist -czf "dist/${NAME}.tar.gz" "${NAME}"
-
-          # .deb собираем вручную: заготовка debian/ рассчитана на debhelper 9
-          # и устарела, а нам нужен контроль версии прямо из тега.
-          ROOT="dist/deb-root"
-          install -Dm755 build/v8unpack "${ROOT}/usr/bin/v8unpack"
-          install -Dm644 README.md      "${ROOT}/usr/share/doc/v8unpack/README.md"
-          install -Dm644 LICENSE        "${ROOT}/usr/share/doc/v8unpack/copyright"
-          mkdir -p "${ROOT}/DEBIAN"
-          cat > "${ROOT}/DEBIAN/control" <<EOF
-          Package: v8unpack
-          Version: ${V}
-          Section: utils
-          Priority: optional
-          Architecture: amd64
-          Maintainer: e8tools <https://github.com/e8tools/e8unpack>
-          Description: Enterprise 8 unpack tool
-          EOF
-          dpkg-deb --build --root-owner-group "${ROOT}" "dist/v8unpack_${V}_amd64.deb"
-
-          echo "=== файлы ==="
-          ls -lh dist/*.tar.gz dist/*.deb
 
       - name: Артефакты
         uses: actions/upload-artifact@v4

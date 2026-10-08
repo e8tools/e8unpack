@@ -43,6 +43,19 @@ sudo wget http://download.opensuse.org/repositories/home:/pumbaEO/Fedora_22/home
 sudo dnf install v8unpack
 ```
 
+### Готовые сборки (GitHub Releases)
+
+Сборки лежат в [releases](https://github.com/e8tools/e8unpack/releases).
+
+Linux-архив (`v8unpack-<версия>-linux-x86_64.tar.gz`) самодостаточен: рядом с
+бинарником в `lib/` лежат Qt6 и её зависимости (ICU, glib, pcre2, zstd, zlib,
+double-conversion, libb2, libstdc++, libgcc). Устанавливать Qt6 не нужно —
+достаточно распаковать архив и запустить `./v8unpack`. Сборка сделана в Debian 12
+(glibc 2.36) — на более старых системах с glibc < 2.36 понадобится своя сборка.
+
+В `.deb` те же библиотеки ставятся в `/usr/lib/v8unpack`, бинарник находит их
+через `RPATH`.
+
 ### Chocolatey
 ```
 choco install v8unpack -source https://www.myget.org/F/onescript -y
