@@ -143,7 +143,7 @@ QString StructuredUnpacker::findRootDir() const
     for (; it != end; it.increment(ec)) {
         if (ec) break;
 
-        if (it->is_regular_file(ec)
+        if (fs::is_regular_file(it->path(), ec)
             && it->path().filename() == L"root")          
         {
             return QString::fromStdWString(it->path().parent_path().wstring());

@@ -71,7 +71,7 @@ bool StructuredPacker::flattenToTemp()
     for (; it != end; it.increment(ec)) {
         if (ec) break;
 
-        if (!it->is_regular_file(ec))
+        if (!fs::is_regular_file(it->path(), ec))
             continue;
 
         const fs::path& src = it->path();

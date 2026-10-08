@@ -143,6 +143,16 @@ jobs:
           fi
           exit $rc
 
+      - name: Хвост лога при ошибке
+        if: failure()
+        run: |
+          {
+            echo "## Linux: хвост лога (сборка в Debian 12)"
+            echo '```'
+            tail -c 4000 linux-step.log 2>/dev/null || echo "лог linux-step.log не найден"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Артефакты
         uses: actions/upload-artifact@v4
         with:
