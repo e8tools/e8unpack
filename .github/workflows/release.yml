@@ -100,9 +100,12 @@ jobs:
               python3 .github/scripts/bundle-linux-libs.py \
                 --exe "dist/${NAME}/v8unpack" --dest "dist/${NAME}/lib"
 
-              # $ORIGIN/lib — для распакованного архива,
-              # $ORIGIN/../lib/v8unpack — для установленного из .deb
-              patchelf --set-rpath "\$ORIGIN/lib:\$ORIGIN/../lib/v8unpack" "dist/${NAME}/v8unpack"
+              # rpath прописывается после копирования. Именно RPATH (--force-rpath),
+              # а не RUNPATH: RUNPATH не наследуется зависимостями, и тогда Qt6 не
+              # находит в lib/ свои ICU, glib и pcre2. У каждой библиотеки — свой
+              # $ORIGIN; $ORIGIN/../lib/v8unpack — вариант для установки из .deb.
+              python3 .github/scripts/bundle-linux-libs.py --patch \
+                --exe "dist/${NAME}/v8unpack" --dest "dist/${NAME}/lib"
 
               STAGE="проверка замыкания зависимостей"
               python3 .github/scripts/bundle-linux-libs.py --check --dir "dist/${NAME}"
