@@ -375,12 +375,27 @@ jobs:
           echo "--- описание ---"
           cat dist/release-body.md
 
-      - name: Создание релиза
-        uses: softprops/action-gh-release@v2
-        with:
-          body_path: dist/release-body.md
-          files: |
-            dist/*.tar.gz
-            dist/*.deb
-            dist/*.zip
-          fail_on_unmatched_files: true
+      - name: Создание/обновление релиза
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          V="${GITHUB_REF_NAME}"
+          ls -1 dist/*.tar.gz dist/*.deb dist/*.zip
+
+          if gh release view "$V" >/dev/null 2>&1; then
+            echo "релиз $V уже есть — обновляем описание"
+            gh release edit "$V" --title "$V" --notes-file dist/release-body.md
+          else
+            echo "создаём релиз $V"
+            gh release create "$V" --title "$V" --notes-file dist/release-body.md
+          fi
+
+          gh release upload "$V" dist/*.tar.gz dist/*.deb dist/*.zip --clobber
+
+          # Итог печатаем в аннотацию: логи Actions без входа не читаются,
+          # а аннотации доступны анонимно.
+          gh release view "$V" --json tagName,name,url,body,files \
+            --template '{{.tagName}} | файлов: {{len .files}} | описание: {{len .body}} символов | {{.url}}'
+          echo
+          echo "::notice::релиз ${V}: описание $(wc -c < dist/release-body.md) байт"
