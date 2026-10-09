@@ -94,6 +94,44 @@ QString findIdentityNameInTree(tree* node, const QString& guidLower)
     return {};
 }
 
+
+/// Один обход дерева: собрать ВСЕ пары «GUID элемента -> имя» (узел {1,0,<guid>},
+/// имя — в следующем sibling-узле-строке). Первое найденное имя для GUID
+/// побеждает — как и в findIdentityNameInTree, которая прекращает поиск на
+/// первом совпадении. Нужна, чтобы не обходить дерево заново для каждого
+/// искомого элемента.
+void collectIdentityNames(tree* node, QHash<QString, QString>& out)
+{
+    if (!node) return;
+
+    if (node->get_num_subnode() == 3) {
+        tree* c0 = node->get_subnode(0);
+        tree* c1 = node->get_subnode(1);
+        tree* c2 = node->get_subnode(2);
+
+        if (c0 && c1 && c2
+            && c0->get_type() == nd_number && c0->get_value() == QLatin1String("1")
+            && c1->get_type() == nd_number && c1->get_value() == QLatin1String("0")
+            && c2->get_type() == nd_guid)
+        {
+            const QString key = c2->get_value().toLower();
+            if (!out.contains(key)) {
+                for (tree* t = node->get_next(); t; t = t->get_next()) {
+                    if (t->get_type() == nd_string && !t->get_value().isEmpty()) {
+                        out.insert(key, t->get_value());
+                        break;
+                    }
+                    if (t->get_type() == nd_list)
+                        break;
+                }
+            }
+        }
+    }
+
+    for (int i = 0; i < node->get_num_subnode(); ++i)
+        collectIdentityNames(node->get_subnode(i), out);
+}
+
 } // namespace
 
 
@@ -480,16 +518,22 @@ ConfigStructureReader::findElementOwners(const QStringList& elementGuids) const
             continue;
         tree* t = loadTree(f, QStringLiteral("owner:") + ownerGuid);
         if (!t) continue;
-        for (const QString& g : wanted) {
-            const QString nm = findIdentityNameInTree(t, g);
-            if (nm.isEmpty())
+
+        // Был обход дерева на каждый искомый элемент — на больших конфигурациях
+        // это квадратично. Теперь один обход собирает все имена, а нужные
+        // отбираются по множеству wanted.
+        QHash<QString, QString> names;
+        collectIdentityNames(t, names);
+        delete t;
+
+        for (auto it = names.constBegin(); it != names.constEnd(); ++it) {
+            if (!wanted.contains(it.key()))
                 continue;
             ElementOwner eo;
             eo.ownerGuid = ownerGuid;
-            eo.name      = nm;
-            result.insert(g, eo);
+            eo.name      = it.value();
+            result.insert(it.key(), eo);
         }
-        delete t;
     }
 
     return result;
