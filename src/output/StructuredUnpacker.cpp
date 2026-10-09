@@ -548,7 +548,7 @@ bool StructuredUnpacker::flattenModuleEntries()
         entry.moduleInfo       = infoBytes;
         entry.moduleTextHadBom = rawText.startsWith(QByteArray::fromHex("efbbbf"));
         entry.rawSize          = QFileInfo(targetPath).size();
-        qInfo() << "StructuredUnpacker: module flattened:" << entry.originalName << "->" << newPath;
+        qDebug() << "StructuredUnpacker: module flattened:" << entry.originalName << "->" << newPath;
     }
     return true;
 }
@@ -630,7 +630,7 @@ bool StructuredUnpacker::extractFormModules()
         entry.formModulePath = moduleRel;
         entry.rawSize        = QFileInfo(absPath).size();
         ++found;
-        qInfo() << "StructuredUnpacker: модуль формы вынесен:" << relPath << "->" << moduleRel;
+        qDebug() << "StructuredUnpacker: модуль формы вынесен:" << relPath << "->" << moduleRel;
     }
 
     if (found)

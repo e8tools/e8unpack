@@ -928,14 +928,14 @@ int ParseDecompile(const string &filename_in, const string &dirname, const vecto
 	bool mapLoaded = false;
 
 	if (!mapLoaded) {
-		qDebug(
+		qWarning(
 			"Предупреждение: карта метаданных не загружена. "
 			"Имена объектов будут по GUID.\n");
 	}
 
 	StructuredUnpacker unpacker(QString::fromStdString(filename_in) , QString::fromStdString(dirname), nullptr);
 	if (!unpacker.run()) {
-		qDebug("Ошибка распаковки.\n");
+		qCritical("Ошибка распаковки.\n");
 		return 3;
 	}
 
@@ -1201,7 +1201,7 @@ int BuildCfFileCompile(const string &in_dirname, const string &out_filename, boo
 	*/
 	StructuredPacker packer(QString::fromStdString(in_dirname), QString::fromStdString(out_filename), false);
 	if (!packer.run()) {
-		qDebug("Ошибка сборки.\n");
+		qCritical("Ошибка сборки.\n");
 		return 5;
 	}
 

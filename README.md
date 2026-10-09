@@ -83,4 +83,5 @@ choco install v8unpack -source https://www.myget.org/F/onescript -y
   -P[ARSE]   -L[IST]   listfile
   -B[UILD] [-N[OPACK]] in_dirname         out_filename
   -B[UILD] [-N[OPACK]] -L[IST] listfile
+  --verbose            диагностические сообщения (по умолчанию не печатаются)
 ```

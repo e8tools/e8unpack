@@ -21,6 +21,7 @@ at http://mozilla.org/MPL/2.0/.
 #include "FilePath.h"
 #include "version.h"
 #include <iostream>
+#include <cstdlib>
 #include <algorithm>
 #include <sstream>
 #include "ConsoleOutput.h"               // для кириллицы в Windows
@@ -70,7 +71,7 @@ static void consoleMessageHandler(QtMsgType type, const QMessageLogContext&, con
     const char* prefix = "";
     switch (type) {
         case QtDebugMsg:    prefix = "[D] "; break;
-        case QtInfoMsg:     prefix = "[I] "; break;
+        case QtInfoMsg:     prefix = "";     break;
         case QtWarningMsg:  prefix = "[W] "; break;
         case QtCriticalMsg: prefix = "[C] "; break;
         case QtFatalMsg:    prefix = "[F] "; break;
@@ -110,6 +111,7 @@ int usage(vector<string> &argv)
 	cout << "  -E[XAMPLE]" << endl;
 	cout << "  -BAT" << endl;
 	cout << "  -V[ERSION]" << endl;
+		cout << "  --verbose            диагностические сообщения (по умолчанию не печатаются)" << endl;
 
 	return 0;
 }
@@ -465,14 +467,33 @@ int main(int argc, char* argv[])
 	
 	qInstallMessageHandler(consoleMessageHandler);
 
-	// Включаем диагностику сразу после разбора, чтобы все последующие
-	// qDebug() из модулей были видны (или скрыты) корректно.
-	g_verbose.store(true, std::memory_order_relaxed);
 
 
 	// Командная строка Windows приходит в ANSI-кодировке процесса: кириллица
 	// в путях терялась бы ещё до входа в main(). Забираем её в UTF-8.
 	args = command_line_args(argc, argv);
+
+	// Диагностические сообщения (qDebug) по умолчанию не печатаются: включаются
+	// опцией --verbose в любом месте командной строки либо переменной окружения
+	// V8UNPACK_VERBOSE. Саму опцию из аргументов убираем, чтобы она не мешала
+	// разбору режима.
+	bool verbose = false;
+	for (size_t i = 0; i < args.size(); ) {
+		string option(args[i]);
+		transform(option.begin(), option.end(), option.begin(), ::tolower);
+		if (option == "--verbose" || option == "-verbose") {
+			verbose = true;
+			args.erase(args.begin() + static_cast<ptrdiff_t>(i));
+		} else {
+			++i;
+		}
+	}
+	if (const char* env = getenv("V8UNPACK_VERBOSE")) {
+		string value(env);
+		verbose = verbose || (!value.empty() && value != "0");
+	}
+	g_verbose.store(verbose, std::memory_order_relaxed);
+
 	handler_t handler = get_run_mode(args, arg_base, allow_listfile);
 
 	vector<string> cli_args;
