@@ -104,6 +104,10 @@ private:
     QSet<QString> unplacedMemberGuids() const;
     bool flattenModuleEntries();
 
+    /// Вынести модуль формы из текста описания формы в отдельный файл
+    /// "Модуль формы.bsl" (в тексте формы он заменяется пустой строкой).
+    bool extractFormModules();
+
     QVector<ObjectGroup> m_groups_cache;
 
     UnpackManifest m_manifest;   

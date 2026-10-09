@@ -69,6 +69,8 @@ add_executable (v8unpack ${V8UNPACK_SOURCES} ${V8UNPACK_HEADERS} ${RC_FILE}
 	src/metadata/MetadataMapper.cpp
 	src/output/FileLayoutBuilder.h
 	src/output/FileLayoutBuilder.cpp
+	src/core/OneCText.h
+	src/core/OneCText.cpp
 	src/output/StructuredPacker.h
 	src/output/StructuredPacker.cpp
 	src/output/StructuredUnpacker.h

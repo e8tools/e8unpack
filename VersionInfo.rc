@@ -1,6 +1,6 @@
 1 VERSIONINFO
-FILEVERSION     3,0,49,0
-PRODUCTVERSION  3,0,49,0
+FILEVERSION     3,0,50,0
+PRODUCTVERSION  3,0,50,0
 BEGIN
   BLOCK "StringFileInfo"
   BEGIN
@@ -8,12 +8,12 @@ BEGIN
     BEGIN
       VALUE "CompanyName", "V8Unpack developers community"
       VALUE "FileDescription", "V8 Unpack Tool"
-      VALUE "FileVersion", "3.0.49"
+      VALUE "FileVersion", "3.0.50"
       VALUE "InternalName", "v8unpack"
       VALUE "LegalCopyright", "Denis Demidov, Sergey Batanov, Sergey Rudakov and others"
       VALUE "OriginalFilename", "v8unpack.exe"
       VALUE "ProductName", "V8 Unpack Tool"
-      VALUE "ProductVersion", "3.0.49"
+      VALUE "ProductVersion", "3.0.50"
     END
   END
 

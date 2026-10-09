@@ -4,6 +4,7 @@
 #include "StructuredPacker.h"
 #include "src/core/MetadataTypes.h"
 #include "src/metadata/SectionTypes.h"
+#include "src/core/OneCText.h"
 #include "V8File.h"
 
 #include <QDir>
@@ -254,6 +255,57 @@ bool StructuredPacker::packFromManifest()
                         text.close();
                     }
                 }
+            }
+        } else if (!e.formModulePath.isEmpty()) {
+            // Описание формы: модуль формы лежал отдельным файлом
+            // (см. StructuredUnpacker::extractFormModules) — возвращаем его
+            // третьим элементом верхнего уровня, остальной текст не меняется.
+            const QString formAbs   = QDir(m_inputDir).filePath(e.diskPath);
+            const QString moduleAbs = QDir(m_inputDir).filePath(e.formModulePath);
+
+            QFile formFile(formAbs);
+            QFile moduleFile(moduleAbs);
+            if (!formFile.open(QIODevice::ReadOnly) || !moduleFile.open(QIODevice::ReadOnly)) {
+                qWarning() << "StructuredPacker: не открыть описание формы или её модуль:"
+                           << e.diskPath << e.formModulePath;
+                e2 = boost::system::errc::make_error_code(boost::system::errc::io_error);
+            } else {
+                // BOM определяем по сырым байтам: QString::fromUtf8 его не сохраняет.
+                QByteArray rawForm = formFile.readAll();
+                const bool bom = rawForm.startsWith(QByteArray::fromHex("efbbbf"));
+                if (bom)
+                    rawForm.remove(0, 3);
+                const QString body = QString::fromUtf8(rawForm);
+
+                // Редактор мог добавить BOM и в файл модуля — отбрасываем его.
+                QByteArray rawModule = moduleFile.readAll();
+                if (rawModule.startsWith(QByteArray::fromHex("efbbbf")))
+                    rawModule.remove(0, 3);
+                const QString module = QString::fromUtf8(rawModule);
+
+                int     begin = 0;
+                int     end   = 0;
+                QString slot;
+                if (!OneCText::topLevelStringSpan(body, 2, &begin, &end, &slot)) {
+                    qWarning() << "StructuredPacker: в описании формы нет элемента модуля:"
+                               << e.diskPath;
+                    e2 = boost::system::errc::make_error_code(boost::system::errc::invalid_argument);
+                } else {
+                    const QString updated = (bom ? QString(QChar(0xFEFF)) : QString())
+                                          + body.left(begin) + OneCText::toElement(module)
+                                          + body.mid(end);
+                    QFile dstFile(QString::fromStdWString(dst.wstring()));
+                    if (!dstFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+                        qWarning() << "StructuredPacker: не записать описание формы:"
+                                   << QString::fromStdWString(dst.wstring());
+                        e2 = boost::system::errc::make_error_code(boost::system::errc::io_error);
+                    } else {
+                        dstFile.write(updated.toUtf8());
+                        dstFile.close();
+                    }
+                }
+                formFile.close();
+                moduleFile.close();
             }
         } else if (fs::is_directory(src, e2)) {
             // Compound entry: recursively copy its info + text directory.

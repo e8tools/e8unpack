@@ -24,12 +24,14 @@ struct ManifestEntry {
     QString moduleKind;     // recognized configuration module type for flat BSL path
     QByteArray moduleInfo;  // original compound element info bytes
     bool moduleTextHadBom = true;
+    QString formModulePath; // для описания формы: путь к "Модуль формы.bsl"
+                            // (сам модуль в тексте формы заменён на пустую строку)
 };
 
 class UnpackManifest
 {
 public:
-    static constexpr int kCurrentVersion = 1;
+    static constexpr int kCurrentVersion = 2;
     static constexpr const char* kDirName  = ".e8unpack";
     static constexpr const char* kFileName = "manifest.json";
 

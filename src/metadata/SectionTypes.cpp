@@ -21,6 +21,20 @@ static QHash<QString, QString> buildSections()
     add(GUID_Section_Forms_ExchangePlans,    sec_Forms);
     add(GUID_Section_Forms_SettingsStorages, sec_Forms);
     add(GUID_Section_Forms_FilterCriteria,   sec_Forms);
+    add(GUID_Section_Forms_Documents,        sec_Forms);
+    add(GUID_Section_Forms_Reports, sec_Forms);
+    add(GUID_Section_Forms_DataProcessors, sec_Forms);
+    add(GUID_Section_Forms_Enums, sec_Forms);
+    add(GUID_Section_Forms_DocumentJournals, sec_Forms);
+    add(GUID_Section_Forms_ChartsOfAccounts, sec_Forms);
+    add(GUID_Section_Forms_ChartsOfCharacteristicTypes, sec_Forms);
+    add(GUID_Section_Forms_ChartsOfCalculationTypes, sec_Forms);
+    add(GUID_Section_Forms_InformationRegisters, sec_Forms);
+    add(GUID_Section_Forms_AccumulationRegisters, sec_Forms);
+    add(GUID_Section_Forms_AccountingRegisters, sec_Forms);
+    add(GUID_Section_Forms_CalculationRegisters, sec_Forms);
+    add(GUID_Section_Forms_BusinessProcesses, sec_Forms);
+    add(GUID_Section_Forms_Tasks, sec_Forms);
 
     return m;
 }

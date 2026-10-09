@@ -40,7 +40,8 @@ bool UnpackManifest::load(const QString& outputDir, QString* errorOut)
 
     const QJsonObject root = doc.object();
     const int version = root.value(QStringLiteral("version")).toInt(0);
-    if (version != kCurrentVersion) {
+    // Версия 1 — манифесты без вынесенных модулей форм; читаем их как есть.
+    if (version < 1 || version > kCurrentVersion) {
         if (errorOut) *errorOut = QStringLiteral("Неподдерживаемая версия manifest: %1").arg(version);
         return false;
     }
@@ -60,6 +61,7 @@ bool UnpackManifest::load(const QString& outputDir, QString* errorOut)
         e.moduleKind    = o.value(QStringLiteral("moduleKind")).toString();
         e.moduleInfo    = QByteArray::fromBase64(o.value(QStringLiteral("moduleInfoBase64")).toString().toLatin1());
         e.moduleTextHadBom = o.value(QStringLiteral("moduleTextHadBom")).toBool(true);
+        e.formModulePath   = o.value(QStringLiteral("formModule")).toString();
         if (!e.originalName.isEmpty() && !e.diskPath.isEmpty())
             m_entries.append(e);
     }
@@ -87,6 +89,8 @@ bool UnpackManifest::save(const QString& outputDir, QString* errorOut) const
             o[QStringLiteral("moduleInfoBase64")] = QString::fromLatin1(e.moduleInfo.toBase64());
             o[QStringLiteral("moduleTextHadBom")] = e.moduleTextHadBom;
         }
+        if (!e.formModulePath.isEmpty())
+            o[QStringLiteral("formModule")] = e.formModulePath;
         arr.append(o);
     }
 

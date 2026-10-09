@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 #include "StructuredUnpacker.h"
+#include "src/core/OneCText.h"
 #include "src/core/MetadataTypes.h"
 #include "V8File.h"   // v8unpack::Parse
 #include "src/metadata/ConfigStructureReader.h"
@@ -360,6 +361,58 @@ bool StructuredUnpacker::unpackToTemp()
     return ret == v8unpack::V8UNPACK_OK;
 }
 
+// Роль модуля объекта определяется типом объекта и суффиксом элемента
+// контейнера. Значения сняты с реальной конфигурации, где модули подписаны
+// в своих исходниках:
+//   справочник: .0 — модуль объекта,      .3 — модуль менеджера
+//   документ:   .0 — модуль объекта,      .2 — модуль менеджера
+//   константа:  .0 — модуль менеджера значения, .1 — модуль менеджера
+//   план обмена:        .2 — модуль объекта, .3 — модуль менеджера
+//   критерий отбора:    .0 — модуль менеджера
+//   хранилище настроек: .8 — модуль менеджера
+// Для остальных типов роль не определена — файл называется по имени объекта.
+static QString moduleRoleByTypeAndSuffix(const QString& typeKey, const QString& suffix)
+{
+    static const QHash<QString, QString> roles = {
+        {QStringLiteral("Справочники|0"), QStringLiteral("Модуль объекта")},
+        {QStringLiteral("Справочники|3"), QStringLiteral("Модуль менеджера")},
+        {QStringLiteral("Документы|0"),   QStringLiteral("Модуль объекта")},
+        {QStringLiteral("Документы|2"),   QStringLiteral("Модуль менеджера")},
+        {QStringLiteral("Константы|0"),   QStringLiteral("Модуль менеджера значения")},
+        {QStringLiteral("Константы|1"),   QStringLiteral("Модуль менеджера")},
+        {QStringLiteral("Общие/Планы обмена|2"),        QStringLiteral("Модуль объекта")},
+        {QStringLiteral("Общие/Планы обмена|3"),        QStringLiteral("Модуль менеджера")},
+        {QStringLiteral("Общие/Критерии отбора|0"),     QStringLiteral("Модуль менеджера")},
+        {QStringLiteral("Общие/Хранилища настроек|8"),  QStringLiteral("Модуль менеджера")},
+        {QStringLiteral("Задачи|6"),                           QStringLiteral("Модуль объекта")},
+        {QStringLiteral("Задачи|7"),                           QStringLiteral("Модуль менеджера")},
+        {QStringLiteral("Бизнес-процессы|6"),                  QStringLiteral("Модуль объекта")},
+        {QStringLiteral("Бизнес-процессы|8"),                  QStringLiteral("Модуль менеджера")},
+        {QStringLiteral("Обработки|0"),                        QStringLiteral("Модуль объекта")},
+        {QStringLiteral("Обработки|2"),                        QStringLiteral("Модуль менеджера")},
+        {QStringLiteral("Отчеты|0"),                           QStringLiteral("Модуль объекта")},
+        {QStringLiteral("Отчеты|2"),                           QStringLiteral("Модуль менеджера")},
+        {QStringLiteral("Планы видов расчета|0"),              QStringLiteral("Модуль объекта")},
+        {QStringLiteral("Планы видов расчета|3"),              QStringLiteral("Модуль менеджера")},
+        {QStringLiteral("Планы видов характеристик|15"),       QStringLiteral("Модуль объекта")},
+        {QStringLiteral("Планы видов характеристик|16"),       QStringLiteral("Модуль менеджера")},
+        {QStringLiteral("Планы счетов|14"),                    QStringLiteral("Модуль объекта")},
+        {QStringLiteral("Планы счетов|15"),                    QStringLiteral("Модуль менеджера")},
+        {QStringLiteral("Перечисления|0"),                     QStringLiteral("Модуль менеджера")},
+        {QStringLiteral("Журналы документов|1"),               QStringLiteral("Модуль менеджера")},
+        {QStringLiteral("Регистры сведений|1"),                QStringLiteral("Модуль набора записей")},
+        {QStringLiteral("Регистры сведений|2"),                QStringLiteral("Модуль менеджера")},
+        {QStringLiteral("Регистры накопления|1"),              QStringLiteral("Модуль набора записей")},
+        {QStringLiteral("Регистры накопления|2"),              QStringLiteral("Модуль менеджера")},
+        {QStringLiteral("Регистры расчета|1"),                 QStringLiteral("Модуль набора записей")},
+        {QStringLiteral("Регистры расчета|2"),                 QStringLiteral("Модуль менеджера")},
+        {QStringLiteral("Регистры бухгалтерии|6"),             QStringLiteral("Модуль набора записей")},
+        {QStringLiteral("Регистры бухгалтерии|7"),             QStringLiteral("Модуль менеджера")},
+        {QStringLiteral("Общие/Боты|1"),                       QStringLiteral("Модуль бота")}
+    };
+    return roles.value(typeKey + QLatin1Char('|') + suffix);
+}
+
 bool StructuredUnpacker::flattenModuleEntries()
 {
     // Типы модулей самой конфигурации: по суффиксу элемента контейнера
@@ -442,18 +495,29 @@ bool StructuredUnpacker::flattenModuleEntries()
             newPath = parentRel + QLatin1Char('/') + kind + QStringLiteral(".bsl");
         } else {
             // ── Модули объектов метаданных (в т.ч. общих модулей) ──────
-            // Каталог объекта уже назван его именем, полученным из метаданных:
-            //   "Общие/Общие модули/Основной", "Справочники/Номенклатура", ...
-            // Файл модуля получает то же имя, что и сам объект.
-            const QString moduleName = parentRel.section(QLatin1Char('/'), -1, -1);
-            if (moduleName.isEmpty())
-                continue;
-            kind    = moduleName;
-            newPath = parentRel + QLatin1Char('/') + moduleName + QStringLiteral(".bsl");
-            if (QFileInfo::exists(QDir(m_outputDir).filePath(newPath))) {
-                // У объекта несколько модулей — различаем их по суффиксу элемента.
-                newPath = parentRel + QLatin1Char('/') + moduleName
-                          + QLatin1Char('.') + suffix + QStringLiteral(".bsl");
+            // Если у объекта роль модуля известна (модуль объекта, модуль
+            // менеджера, ...), файл называется так же, как называется сам
+            // модуль в конфигураторе.
+            const QString typeKey = parentRel.section(QLatin1Char('/'), 0, -2);
+            const QString role    = moduleRoleByTypeAndSuffix(typeKey, suffix);
+
+            if (!role.isEmpty()) {
+                kind    = role;
+                newPath = parentRel + QLatin1Char('/') + role + QStringLiteral(".bsl");
+            } else {
+                // Роль неизвестна — файл получает имя объекта.
+                // Каталог объекта уже назван его именем, полученным из
+                // метаданных: "Общие/Общие модули/Основной", "Справочники/Номенклатура".
+                const QString moduleName = parentRel.section(QLatin1Char('/'), -1, -1);
+                if (moduleName.isEmpty())
+                    continue;
+                kind    = moduleName;
+                newPath = parentRel + QLatin1Char('/') + moduleName + QStringLiteral(".bsl");
+                if (QFileInfo::exists(QDir(m_outputDir).filePath(newPath))) {
+                    // У объекта несколько модулей — различаем их по суффиксу элемента.
+                    newPath = parentRel + QLatin1Char('/') + moduleName
+                              + QLatin1Char('.') + suffix + QStringLiteral(".bsl");
+                }
             }
         }
 
@@ -486,6 +550,91 @@ bool StructuredUnpacker::flattenModuleEntries()
         entry.rawSize          = QFileInfo(targetPath).size();
         qInfo() << "StructuredUnpacker: module flattened:" << entry.originalName << "->" << newPath;
     }
+    return true;
+}
+
+bool StructuredUnpacker::extractFormModules()
+{
+    // У описания формы модуль лежит прямо в тексте: {4, {свойства}, "модуль", ...}
+    // — третий элемент верхнего уровня. Выносим его в отдельный файл
+    // "Модуль формы.bsl" рядом с формой, а в тексте оставляем пустую строку:
+    // при сборке контейнера модуль возвращается на то же место (StructuredPacker),
+    // поэтому контейнер собирается байт-в-байт как исходный.
+    int found = 0;
+    QSet<QString> usedTargets;
+
+    for (auto& entry : m_manifest.entries()) {
+        const QString relPath = QDir::fromNativeSeparators(entry.diskPath);
+        if (relPath.isEmpty() || !entry.formModulePath.isEmpty())
+            continue;
+
+        const QString absPath = QDir(m_outputDir).filePath(relPath);
+        const QFileInfo info(absPath);
+        if (!info.isFile() || info.size() < 4)
+            continue;
+
+        // Дешёвый отбор: описание формы начинается с "{4,".
+        QFile file(absPath);
+        if (!file.open(QIODevice::ReadOnly))
+            continue;
+        QByteArray raw = file.readAll();
+        file.close();
+        // В начале файла может стоять BOM: запоминаем его и убираем из буфера,
+        // чтобы он не мешал разбору и не потерялся при обратной записи.
+        const bool bom = raw.startsWith(QByteArray::fromHex("efbbbf"));
+        if (bom)
+            raw.remove(0, 3);
+        if (!raw.startsWith(QByteArrayLiteral("{4,")))
+            continue;
+
+        const QString body = QString::fromUtf8(raw);
+
+        int     begin  = 0;
+        int     end    = 0;
+        QString module;
+        if (!OneCText::topLevelStringSpan(body, 2, &begin, &end, &module))
+            continue;
+        if (module.isEmpty())
+            continue;                       // у формы нет модуля — ничего не делаем
+
+        // Обычно у формы свой каталог, но служебные формы самой конфигурации
+        // лежат прямо в "Конфигурация/" — тогда имена разводим по GUID описания.
+        QString moduleRel = QFileInfo(relPath).path() + QStringLiteral("/Модуль формы.bsl");
+        if (usedTargets.contains(moduleRel) || QFileInfo::exists(QDir(m_outputDir).filePath(moduleRel))) {
+            moduleRel = QFileInfo(relPath).path() + QStringLiteral("/Модуль формы ")
+                      + QFileInfo(relPath).completeBaseName() + QStringLiteral(".bsl");
+        }
+        usedTargets.insert(moduleRel);
+        const QString moduleAbs = QDir(m_outputDir).filePath(moduleRel);
+
+        QFile moduleFile(moduleAbs);
+        if (!moduleFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            qWarning() << "StructuredUnpacker: не удалось записать модуль формы:" << moduleAbs;
+            continue;
+        }
+        moduleFile.write(module.toUtf8());
+        moduleFile.close();
+
+        // В тексте формы на месте модуля — пустая строка; остальное не трогаем.
+        const QString updated = (bom ? QString(QChar(0xFEFF)) : QString())
+                              + body.left(begin) + QStringLiteral("\"\"") + body.mid(end);
+
+        QFile formFile(absPath);
+        if (!formFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            qWarning() << "StructuredUnpacker: не удалось перезаписать описание формы:" << absPath;
+            continue;
+        }
+        formFile.write(updated.toUtf8());
+        formFile.close();
+
+        entry.formModulePath = moduleRel;
+        entry.rawSize        = QFileInfo(absPath).size();
+        ++found;
+        qInfo() << "StructuredUnpacker: модуль формы вынесен:" << relPath << "->" << moduleRel;
+    }
+
+    if (found)
+        qInfo() << "StructuredUnpacker: модулей форм вынесено:" << found;
     return true;
 }
 
@@ -685,6 +834,7 @@ bool StructuredUnpacker::run()
     }
 
     flattenModuleEntries();
+    extractFormModules();
 
     // ── Сохраняем manifest ───────────────────────────────────────
     // Делаем это ПОСЛЕ успешного переноса всех файлов и ДО cleanupTemp(),
