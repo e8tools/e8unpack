@@ -248,9 +248,14 @@ bool StructuredPacker::packFromManifest()
                     if (!sourceFile.open(QIODevice::ReadOnly) || !text.open(QIODevice::WriteOnly)) {
                         e2 = boost::system::errc::make_error_code(boost::system::errc::io_error);
                     } else {
+                        // Файл модуля пишется с BOM (как в выгрузке платформы), а BOM
+                        // элемента восстанавливается по манифесту — из файла его убираем.
+                        QByteArray moduleBytes = sourceFile.readAll();
+                        if (moduleBytes.startsWith(QByteArray::fromHex("efbbbf")))
+                            moduleBytes.remove(0, 3);
                         if (e.moduleTextHadBom)
                             text.write(QByteArray::fromHex("efbbbf"));
-                        text.write(sourceFile.readAll());
+                        text.write(moduleBytes);
                         sourceFile.close();
                         text.close();
                     }

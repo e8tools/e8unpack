@@ -408,8 +408,26 @@ static QString moduleRoleByTypeAndSuffix(const QString& typeKey, const QString& 
         {QStringLiteral("Регистры расчета|2"),                 QStringLiteral("Модуль менеджера")},
         {QStringLiteral("Регистры бухгалтерии|6"),             QStringLiteral("Модуль набора записей")},
         {QStringLiteral("Регистры бухгалтерии|7"),             QStringLiteral("Модуль менеджера")},
-        {QStringLiteral("Общие/Боты|1"),                       QStringLiteral("Модуль бота")}
     };
+    // Роли, не зависящие от суффикса элемента: у такого объекта ровно один модуль,
+    // и его каталог уже назван именем объекта.
+    static const QHash<QString, QString> typeOnlyRoles = {
+        {QStringLiteral("Общие/HTTP-сервисы"),       QStringLiteral("Модуль")},
+        {QStringLiteral("Общие/Web-сервисы"),        QStringLiteral("Модуль")},
+        {QStringLiteral("Общие/WebSocket-клиенты"),  QStringLiteral("Модуль")},
+        {QStringLiteral("Общие/Сервисы интеграции"), QStringLiteral("Модуль")},
+        {QStringLiteral("Общие/Боты"),               QStringLiteral("Модуль")},
+        {QStringLiteral("Общие/Общие модули"),       QStringLiteral("Модуль")},
+        {QStringLiteral("Общие/Общие команды"),      QStringLiteral("Модуль команды")}
+    };
+    const QString typeOnly = typeOnlyRoles.value(typeKey);
+    if (!typeOnly.isEmpty())
+        return typeOnly;
+
+    // Модуль команды лежит в <Объект>/Команды/<Команда>/.
+    if (typeKey.endsWith(QStringLiteral("/Команды")))
+        return QStringLiteral("Модуль команды");
+
     return roles.value(typeKey + QLatin1Char('|') + suffix);
 }
 
@@ -527,11 +545,19 @@ bool StructuredUnpacker::flattenModuleEntries()
             continue;
         }
 
+        // BOM: 1C хранит текст модуля вместе с BOM, и выгрузка платформы пишет
+        // его в файл. Без этого дерево отличается от выгрузки на 3 байта на модуль.
+        const bool hadBom = rawText.startsWith(QByteArray::fromHex("efbbbf"));
+
         QFile bslFile(targetPath);
         if (!bslFile.open(QIODevice::WriteOnly)) {
             qWarning() << "StructuredUnpacker: cannot write BSL file:" << targetPath;
             continue;
         }
+        // BOM пишем всегда: выгрузка платформы помечает так каждый .bsl.
+        // Наличие BOM именно в контейнере хранит манифест (moduleTextHadBom) —
+        // по нему сборка восстанавливает элемент байт-в-байт.
+        bslFile.write(QByteArray::fromHex("efbbbf"));
         bslFile.write(text.toUtf8());
         bslFile.close();
 
@@ -546,7 +572,7 @@ bool StructuredUnpacker::flattenModuleEntries()
         entry.diskPath         = newPath;
         entry.moduleKind       = kind;
         entry.moduleInfo       = infoBytes;
-        entry.moduleTextHadBom = rawText.startsWith(QByteArray::fromHex("efbbbf"));
+        entry.moduleTextHadBom = hadBom;
         entry.rawSize          = QFileInfo(targetPath).size();
         qDebug() << "StructuredUnpacker: module flattened:" << entry.originalName << "->" << newPath;
     }
@@ -612,6 +638,9 @@ bool StructuredUnpacker::extractFormModules()
             qWarning() << "StructuredUnpacker: не удалось записать модуль формы:" << moduleAbs;
             continue;
         }
+        // Как и у остальных .bsl, у файла модуля формы есть BOM — так пишет
+        // выгрузка платформы; манифест хранит, что было в самом контейнере.
+        moduleFile.write(QByteArray::fromHex("efbbbf"));
         moduleFile.write(module.toUtf8());
         moduleFile.close();
 
