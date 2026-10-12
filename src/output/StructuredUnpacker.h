@@ -108,6 +108,11 @@ private:
     /// "Модуль формы.bsl" (в тексте формы он заменяется пустой строкой).
     bool extractFormModules();
 
+    /// Сохранить данные макетов отдельными файлами с расширением по виду
+    /// (табличный документ → .mxl, текстовый → .txt), чтобы файл открывался
+    /// прямо в 1С. Манифест сохраняет исходное имя элемента контейнера.
+    bool flattenTemplateEntries();
+
     QVector<ObjectGroup> m_groups_cache;
 
     UnpackManifest m_manifest;   

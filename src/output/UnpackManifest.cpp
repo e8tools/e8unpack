@@ -62,6 +62,7 @@ bool UnpackManifest::load(const QString& outputDir, QString* errorOut)
         e.moduleInfo    = QByteArray::fromBase64(o.value(QStringLiteral("moduleInfoBase64")).toString().toLatin1());
         e.moduleTextHadBom = o.value(QStringLiteral("moduleTextHadBom")).toBool(true);
         e.formModulePath   = o.value(QStringLiteral("formModule")).toString();
+        e.templateKind     = o.value(QStringLiteral("templateKind")).toString();
         if (!e.originalName.isEmpty() && !e.diskPath.isEmpty())
             m_entries.append(e);
     }
@@ -91,6 +92,8 @@ bool UnpackManifest::save(const QString& outputDir, QString* errorOut) const
         }
         if (!e.formModulePath.isEmpty())
             o[QStringLiteral("formModule")] = e.formModulePath;
+        if (!e.templateKind.isEmpty())
+            o[QStringLiteral("templateKind")] = e.templateKind;
         arr.append(o);
     }
 

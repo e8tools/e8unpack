@@ -667,6 +667,100 @@ bool StructuredUnpacker::extractFormModules()
     return true;
 }
 
+// Данные макета лежат в контейнере составным элементом "<GUID>.0". Для макета
+// типа "Табличный документ" эта нагрузка — ровно содержимое файла .MXL
+// (сигнатура "MOXCEL" в первых шести байтах). Сохраняем её отдельным файлом
+// "<Имя макета>.mxl", чтобы его можно было открыть прямо в 1С.
+// Вид макета записан в дескрипторе объекта — соседнем элементе "<GUID>":
+// узел "{2,<код>," (0 — табличный документ, 3 — HTML-документ,
+// 4 — текстовый документ; коды сверены с выгрузкой платформы).
+// Манифест сохраняет исходное имя элемента, поэтому сборка не меняется.
+bool StructuredUnpacker::flattenTemplateEntries()
+{
+    struct KindInfo {
+        const char* kind;   // человекочитаемый вид макета
+        const char* ext;    // расширение файла данных (nullptr — файл не выносим)
+    };
+    // Выносим только те виды, у которых нагрузка элемента совпадает
+    // с содержимым файла 1С: табличный документ (.mxl) и текстовый (.txt).
+    static const QHash<int, KindInfo> kinds = {
+        {0, {"Табличный документ", ".mxl"}},
+        {4, {"Текстовый документ", ".txt"}},
+        {3, {"HTML-документ",      nullptr}},
+    };
+    static const QRegularExpression kindRe(QStringLiteral(R"(\{2,(\d+),)"));
+
+    int saved = 0;
+    for (auto& entry : m_manifest.entries()) {
+        const QString oldPath = QDir::fromNativeSeparators(entry.diskPath);
+        if (oldPath.isEmpty() || !oldPath.endsWith(QStringLiteral(".0")))
+            continue;
+
+        const QString baseGuid = baseGuidFromFileName(entry.originalName);
+        if (baseGuid == entry.originalName)
+            continue;                       // не составной элемент
+
+        const QString absPath = QDir(m_outputDir).filePath(oldPath);
+        if (!QFileInfo(absPath).isFile())
+            continue;                       // составной элемент-каталог не трогаем
+
+        const QString parentRel = QFileInfo(oldPath).path();
+        if (parentRel.isEmpty())
+            continue;
+
+        // Дескриптор макета — соседний элемент с тем же GUID и без ".0".
+        QFile descriptor(QDir(m_outputDir).filePath(parentRel + QLatin1Char('/') + baseGuid));
+        if (!descriptor.open(QIODevice::ReadOnly))
+            continue;
+        const QString descriptorText = QString::fromUtf8(descriptor.readAll());
+        descriptor.close();
+
+        const QRegularExpressionMatch match = kindRe.match(descriptorText);
+        if (!match.hasMatch())
+            continue;
+        const auto kindIt = kinds.find(match.captured(1).toInt());
+        if (kindIt == kinds.end())
+            continue;
+
+        entry.templateKind = QString::fromUtf8(kindIt.value().kind);
+
+        const char* ext = kindIt.value().ext;
+        if (!ext)
+            continue;                       // вид распознан, но файл не выносим
+
+        const QString objName = QFileInfo(parentRel).fileName();
+        QString newPath = parentRel + QLatin1Char('/') + objName + QString::fromLatin1(ext);
+        if (entry.diskPath == newPath)
+            continue;
+        if (QFileInfo::exists(QDir(m_outputDir).filePath(newPath))) {
+            // У макета несколько элементов данных — различаем по суффиксу элемента.
+            const QString suffix = entry.originalName.section(QLatin1Char('.'), -1);
+            newPath = parentRel + QLatin1Char('/') + objName
+                      + QLatin1Char('.') + suffix + QString::fromLatin1(ext);
+        }
+
+        boost::system::error_code ec;
+        fs::rename(fs::path(absPath.toStdWString()),
+                   fs::path(QDir(m_outputDir).filePath(newPath).toStdWString()), ec);
+        if (ec) {
+            qWarning() << "StructuredUnpacker: не удалось сохранить данные макета:"
+                       << oldPath << "->" << newPath
+                       << ":" << QString::fromStdString(ec.message());
+            continue;
+        }
+
+        entry.diskPath = newPath;
+        ++saved;
+        qDebug() << "StructuredUnpacker: данные макета сохранены:"
+                 << entry.originalName << "->" << newPath
+                 << "(" << entry.templateKind << ")";
+    }
+
+    if (saved)
+        qInfo() << "StructuredUnpacker: макетов сохранено отдельными файлами:" << saved;
+    return true;
+}
+
 bool StructuredUnpacker::buildAndApplyPlan()
 {
     boost::system::error_code ec;
@@ -864,6 +958,7 @@ bool StructuredUnpacker::run()
 
     flattenModuleEntries();
     extractFormModules();
+    flattenTemplateEntries();
 
     // ── Сохраняем manifest ───────────────────────────────────────
     // Делаем это ПОСЛЕ успешного переноса всех файлов и ДО cleanupTemp(),
