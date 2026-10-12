@@ -72,7 +72,9 @@ QString findIdentityNameInTree(tree* node, const QString& guidLower)
         tree* c2 = node->get_subnode(2);
 
         if (c0 && c1 && c2
-            && c0->get_type() == nd_number && c0->get_value() == QLatin1String("1")
+            // см. findNameByGuid: первое число бывает и 1, и 0.
+            && c0->get_type() == nd_number
+            && (c0->get_value() == QLatin1String("1") || c0->get_value() == QLatin1String("0"))
             && c1->get_type() == nd_number && c1->get_value() == QLatin1String("0")
             && c2->get_type() == nd_guid
             && c2->get_value().compare(guidLower, Qt::CaseInsensitive) == 0)
@@ -110,7 +112,9 @@ void collectIdentityNames(tree* node, QHash<QString, QString>& out)
         tree* c2 = node->get_subnode(2);
 
         if (c0 && c1 && c2
-            && c0->get_type() == nd_number && c0->get_value() == QLatin1String("1")
+            // см. findNameByGuid: первое число бывает и 1, и 0.
+            && c0->get_type() == nd_number
+            && (c0->get_value() == QLatin1String("1") || c0->get_value() == QLatin1String("0"))
             && c1->get_type() == nd_number && c1->get_value() == QLatin1String("0")
             && c2->get_type() == nd_guid)
         {
@@ -242,7 +246,11 @@ QString findNameByGuid(tree* node, const QString& objectGuid)
         tree* c2 = node->get_subnode(2);
 
         if (c0 && c1 && c2
-            && c0->get_type() == nd_number && c0->get_value() == QLatin1String("1")
+            // Первое число узла-идентификатора встречается и как 1, и как 0
+            // ({1,0,guid} у большинства объектов, {0,0,guid} — например, у
+            // констант, ролей и общих модулей в больших конфигурациях).
+            && c0->get_type() == nd_number
+            && (c0->get_value() == QLatin1String("1") || c0->get_value() == QLatin1String("0"))
             && c1->get_type() == nd_number && c1->get_value() == QLatin1String("0")
             && c2->get_type() == nd_guid
             && c2->get_value().compare(objectGuid, Qt::CaseInsensitive) == 0)
