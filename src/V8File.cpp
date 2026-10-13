@@ -397,8 +397,22 @@ void CV8File::Dispose()
 	Elems.clear();
 }
 
-// Нѣкоторый условный предѣл
-const size_t SmartLimit = 00 *1024;
+// Порог «умной» распаковки: блок данных до этого размера читается в память и
+// разбирается без промежуточных файлов. Обоснование — в комментарии ниже: текст
+// сжимается примерно в 100 раз, на элемент отводится порядка 20 МБ, отсюда 200 КБ.
+//
+// Исторически здесь стояло `00 *1024`, то есть ноль: условие `data_size < SmartLimit`
+// не выполнялось никогда, и КАЖДЫЙ член контейнера, включая стобайтные, проходил через
+// два временных файла рядом с элементом — `.v8unpack.tmp` (запись блока),
+// `.v8unpack.inf` (распаковка), удаление первого и переименование второго. На конфигурации
+// из 78 844 членов это десятки тысяч лишних файловых операций на каждую распаковку.
+const size_t SmartLimit = 200 *1024;
+
+// Ограничение на результат распаковки в памяти: блок в пределах SmartLimit может
+// развернуться в сотни раз, и если получилось больше этого, элемент отдаётся через
+// временный файл — как раньше. Упакованные данные при этом всё равно не пишутся на диск.
+const size_t SmartInflatedLimit = 64 *1024*1024;
+
 const size_t SmartUnpackedLimit = 20 *1024*1024;
 
 /*
@@ -482,12 +496,27 @@ prepare_smart_source(basic_istream<char> &file, bool NeedUnpack, boost::filesyst
 	file.read((char*)&header, header.Size());
 	auto data_size = header.data_size();
 
-	if (NeedUnpack && data_size < SmartLimit) {
+	if (data_size < SmartLimit) {
+		// Блок небольшой: читаем в память. Это убирает временные файлы
+		// .v8unpack.tmp/.v8unpack.inf для подавляющего большинства членов.
 		vector<char> source_data;
 		ReadBlockData<format>(file, header, source_data);
-		try_inflate(source_data);
 
-		return make_unique<vector_data_source_t>(source_data);
+		if (!NeedUnpack)
+			return make_unique<vector_data_source_t>(move(source_data));
+
+		try_inflate(source_data);
+		if (source_data.size() <= SmartInflatedLimit)
+			return make_unique<vector_data_source_t>(move(source_data));
+
+		// Распаковалось слишком много — отдаём через файл, как в ветке ниже.
+		// Упакованные данные при этом на диск уже не пишутся.
+		auto inf_path = elem_path.parent_path() / ".v8unpack.inf";
+		{
+			boost::filesystem::ofstream out(inf_path, ios_base::binary);
+			out.write(source_data.data(), static_cast<streamsize>(source_data.size()));
+		}
+		return make_unique<temp_file_data_source_t>(inf_path);
 	}
 
 	auto tmp_path = elem_path.parent_path() / ".v8unpack.tmp";
