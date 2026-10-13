@@ -61,6 +61,26 @@ QString tryExtractGuidFromNode(tree* node)
 }
 
 
+/// Рекурсивный поиск узла {2, <guid>, <base64>} — это ссылка на документ
+/// структуры конфигурации. Нужен для контейнеров расширений (.cfe): члена
+/// root там нет, а ссылка лежит в configinfo.
+QString findStructureGuidInTree(tree* node, int depth = 0)
+{
+    if (!node || depth > 8)
+        return {};
+
+    if (const QString g = tryExtractGuidFromNode(node); !g.isEmpty())
+        return g;
+
+    for (int i = 0; i < node->get_num_subnode(); ++i) {
+        if (const QString g = findStructureGuidInTree(node->get_subnode(i), depth + 1);
+            !g.isEmpty())
+            return g;
+    }
+    return {};
+}
+
+
 /// Обход дерева: узел {1,0,<guid>} — имя лежит в следующем sibling-узле-строке.
 QString findIdentityNameInTree(tree* node, const QString& guidLower)
 {
@@ -298,29 +318,53 @@ ConfigStructureReader::ConfigStructureReader(const fs::path& configDir)
 
 bool ConfigStructureReader::loadRoot()
 {
+    boost::system::error_code ec;
     const fs::path rootFile = m_configDir / "root";
 
-    boost::system::error_code ec;
-    if (!fs::exists(rootFile, ec)) {
-        qWarning() << "ConfigStructureReader: файл root не найден:"
-                   << QString::fromStdWString(rootFile.wstring());
+    if (fs::exists(rootFile, ec)) {
+        tree* root = loadTree(rootFile, QStringLiteral("root"));
+        if (!root)
+            return false;
+
+        m_configGuid = extractConfigGuid(root);
+        delete root;
+
+        if (m_configGuid.isEmpty()) {
+            qWarning() << "ConfigStructureReader: не удалось извлечь GUID "
+                          "файла структуры из root";
+            return false;
+        }
+
+        qDebug() << "ConfigStructureReader: config GUID =" << m_configGuid;
+        return true;
+    }
+
+    // ── Контейнер расширения (.cfe) ─────────────────────────────────
+    // Члена root в нём нет. Ссылка на документ структуры лежит в configinfo
+    // узлом {2, <guid>, <base64>} — том же, что и в .cf.
+    const fs::path infoFile = m_configDir / "configinfo";
+
+    if (!fs::exists(infoFile, ec)) {
+        qWarning() << "ConfigStructureReader: нет ни root, ни configinfo в"
+                   << QString::fromStdWString(m_configDir.wstring());
         return false;
     }
 
-    tree* root = loadTree(rootFile, QStringLiteral("root"));
-    if (!root)
+    tree* info = loadTree(infoFile, QStringLiteral("configinfo"));
+    if (!info)
         return false;
 
-    m_configGuid = extractConfigGuid(root);
-    delete root;
+    m_configGuid = findStructureGuidInTree(info);
+    delete info;
 
     if (m_configGuid.isEmpty()) {
-        qWarning() << "ConfigStructureReader: не удалось извлечь GUID "
-                      "файла структуры из root";
+        qWarning() << "ConfigStructureReader: в configinfo нет ссылки на "
+                      "документ структуры {2,<guid>,...}";
         return false;
     }
 
-    qDebug() << "ConfigStructureReader: config GUID =" << m_configGuid;
+    qInfo() << "ConfigStructureReader: расширение — документ структуры "
+               "взят из configinfo, config GUID =" << m_configGuid;
     return true;
 }
 

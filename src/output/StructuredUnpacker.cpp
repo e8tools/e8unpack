@@ -26,6 +26,15 @@ static bool looksLikeGuid(const QString &name)
     return re.match(name).hasMatch();
 }
 
+/// Каталог содержит описание структуры конфигурации?
+/// В .cf — членами root/version/versions; в .cfe члена root нет, роль
+/// опорного файла играет configinfo: он ссылается на документ структуры.
+static bool hasStructureFile(const QString &dir)
+{
+    return QFileInfo::exists(QDir(dir).filePath(QStringLiteral("root")))
+        || QFileInfo::exists(QDir(dir).filePath(QStringLiteral("configinfo")));
+}
+
 StructuredUnpacker::StructuredUnpacker(const QString &inputFile,
                                        const QString &outputDir,
                                        const MetadataMap *map)
@@ -52,18 +61,17 @@ bool StructuredUnpacker::loadObjectNames()
 {
     QString configDir = m_tempDir;
 
-    const QString serviceDir    = QDir(m_tempDir).filePath(serviceFolderName());
-    const QString rootInService = QDir(serviceDir).filePath(QStringLiteral("root"));
-    const QString rootInTemp    = QDir(m_tempDir).filePath(QStringLiteral("root"));
+    const QString serviceDir = QDir(m_tempDir).filePath(serviceFolderName());
 
-    if (QFileInfo::exists(rootInService))
+    if (hasStructureFile(serviceDir))
         configDir = serviceDir;
-    else if (QFileInfo::exists(rootInTemp))
+    else if (hasStructureFile(m_tempDir))
         configDir = m_tempDir;
     else {
         configDir = findRootDir();
         if (configDir.isEmpty()) {
-            qWarning() << "StructuredUnpacker: файл root не найден в" << m_tempDir;
+            qWarning() << "StructuredUnpacker: ни root, ни configinfo не найдены в"
+                       << m_tempDir;
             return false;
         }
     }
@@ -144,8 +152,10 @@ QString StructuredUnpacker::findRootDir() const
     for (; it != end; it.increment(ec)) {
         if (ec) break;
 
+        const std::wstring fname = it->path().filename().wstring();
+
         if (fs::is_regular_file(it->path(), ec)
-            && it->path().filename() == L"root")          
+            && (fname == L"root" || fname == L"configinfo"))
         {
             return QString::fromStdWString(it->path().parent_path().wstring());
         }
@@ -177,7 +187,7 @@ bool StructuredUnpacker::indexChildElements()
     const QString configDir    = QDir(m_tempDir).filePath(serviceFolderName());
     const QString configDirAlt = m_tempDir;
 
-    const QString effectiveDir = QFileInfo::exists(QDir(configDir).filePath("root")) ? configDir : configDirAlt;
+    const QString effectiveDir = hasStructureFile(configDir) ? configDir : configDirAlt;
 
     ConfigStructureReader reader(effectiveDir.toStdWString());
     // Группы нужны и для секций, и для поиска владельцев элементов
