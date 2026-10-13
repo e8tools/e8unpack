@@ -63,6 +63,10 @@ bool UnpackManifest::load(const QString& outputDir, QString* errorOut)
         e.moduleTextHadBom = o.value(QStringLiteral("moduleTextHadBom")).toBool(true);
         e.formModulePath   = o.value(QStringLiteral("formModule")).toString();
         e.templateKind     = o.value(QStringLiteral("templateKind")).toString();
+        e.localizedOriginal = QByteArray::fromBase64(
+            o.value(QStringLiteral("localizedOriginalBase64")).toString().toLatin1());
+        for (const QJsonValue& lv : o.value(QStringLiteral("localizedFiles")).toArray())
+            e.localizedFiles << lv.toString();
         if (!e.originalName.isEmpty() && !e.diskPath.isEmpty())
             m_entries.append(e);
     }
@@ -94,6 +98,14 @@ bool UnpackManifest::save(const QString& outputDir, QString* errorOut) const
             o[QStringLiteral("formModule")] = e.formModulePath;
         if (!e.templateKind.isEmpty())
             o[QStringLiteral("templateKind")] = e.templateKind;
+        if (!e.localizedFiles.isEmpty()) {
+            o[QStringLiteral("localizedOriginalBase64")] =
+                QString::fromLatin1(e.localizedOriginal.toBase64());
+            QJsonArray files;
+            for (const QString& p : e.localizedFiles)
+                files.append(p);
+            o[QStringLiteral("localizedFiles")] = files;
+        }
         arr.append(o);
     }
 

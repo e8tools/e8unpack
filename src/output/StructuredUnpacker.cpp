@@ -771,6 +771,108 @@ bool StructuredUnpacker::flattenTemplateEntries()
     return true;
 }
 
+// Справка объектов и HTML-макеты лежат в контейнере одной и той же структурой
+// {5,<N>,"<язык>",{#base64:<HTML>},...}: читаемого текста в элементе нет, и
+// открыть его в браузере нельзя. Сохраняем каждый язык отдельным файлом .html:
+//   <Тип>/<Объект>/Справка/<язык>.html        — справка объекта;
+//   <Тип>/<Объект>/Макеты/<Макет>/<язык>.html — HTML-макет.
+// Исходные байты элемента хранит манифест (localizedOriginal), поэтому сборка
+// неизменённого дерева даёт прежние байты контейнера.
+bool StructuredUnpacker::flattenLocalizedHtml()
+{
+    static const char bom[] = "\xef\xbb\xbf";
+
+    int saved = 0;
+    for (auto& entry : m_manifest.entries()) {
+        const QString oldPath = QDir::fromNativeSeparators(entry.diskPath);
+        if (oldPath.isEmpty())
+            continue;
+        if (!entry.moduleKind.isEmpty() || !entry.formModulePath.isEmpty())
+            continue;                        // элемент уже разобран другим проходом
+
+        const QString absPath = QDir(m_outputDir).filePath(oldPath);
+        if (!QFileInfo(absPath).isFile())
+            continue;                        // составной элемент-каталог не трогаем
+
+        QFile element(absPath);
+        if (!element.open(QIODevice::ReadOnly))
+            continue;
+        const QByteArray raw = element.readAll();
+        element.close();
+        if (raw.size() < 32 || raw.size() > 4 * 1024 * 1024)
+            continue;                        // справка и макеты небольшие
+
+        QVector<OneCText::LocalizedItem> items;
+        if (!OneCText::parseLocalizedHtml(raw, &items))
+            continue;                        // не локализованный HTML — не наш элемент
+
+        const QString parentRel = QFileInfo(oldPath).path();
+        if (parentRel.isEmpty())
+            continue;
+
+        // У макета файл кладём в каталог самого макета, у справки — в "Справка/".
+        // Вид макета распознан не у всех объектов (у общих макетов дескриптор
+        // устроен иначе), поэтому смотрим ещё и на имя раздела в пути:
+        //   <Тип>/<Объект>/Макеты/<Макет>/<GUID>.0  — данные макета
+        //   Общие/Общие макеты/<Макет>/<GUID>.0     — данные общего макета
+        const QString sectionRel = QFileInfo(QFileInfo(parentRel).path()).fileName();
+        const bool isTemplate = !entry.templateKind.isEmpty()
+                             || sectionRel == QStringLiteral("Макеты")
+                             || sectionRel == QStringLiteral("Общие макеты");
+        const QString dirRel = parentRel + QLatin1Char('/')
+                             + (isTemplate ? QString() : QStringLiteral("Справка/"));
+        const QString elementSuffix = entry.originalName.section(QLatin1Char('.'), -1);
+
+        QStringList written;
+        bool ok = true;
+        for (const OneCText::LocalizedItem& item : items) {
+            QString rel = dirRel + item.lang + QStringLiteral(".html");
+            if (QFileInfo::exists(QDir(m_outputDir).filePath(rel))) {
+                // У объекта несколько справок — разводим суффиксом элемента.
+                rel = dirRel + item.lang + QLatin1Char('.') + elementSuffix
+                    + QStringLiteral(".html");
+            }
+            const QString abs = QDir(m_outputDir).filePath(rel);
+            QDir().mkpath(QFileInfo(abs).path());
+
+            QFile out(abs);
+            if (!out.open(QIODevice::WriteOnly | QIODevice::Truncate)
+                || out.write(item.data) != item.data.size()) {
+                qWarning() << "StructuredUnpacker: не удалось сохранить справку:" << rel;
+                ok = false;
+                break;
+            }
+            out.close();
+            written << rel;
+        }
+
+        if (!ok) {
+            for (const QString& rel : written)
+                QFile::remove(QDir(m_outputDir).filePath(rel));
+            continue;
+        }
+
+        boost::system::error_code ec;
+        fs::remove(fs::path(absPath.toStdWString()), ec);
+        if (ec) {
+            qWarning() << "StructuredUnpacker: не удалить исходный элемент справки:"
+                       << oldPath << ":" << QString::fromStdString(ec.message());
+            continue;
+        }
+
+        entry.localizedOriginal = raw;
+        entry.localizedFiles    = written;
+        entry.diskPath          = written.first();
+        ++saved;
+        qDebug() << "StructuredUnpacker: справка сохранена файлами:"
+                 << entry.originalName << "->" << written.join(QStringLiteral(", "));
+    }
+
+    if (saved)
+        qInfo() << "StructuredUnpacker: справок и HTML-макетов вынесено файлами:" << saved;
+    return true;
+}
+
 bool StructuredUnpacker::buildAndApplyPlan()
 {
     boost::system::error_code ec;
@@ -969,6 +1071,7 @@ bool StructuredUnpacker::run()
     flattenModuleEntries();
     extractFormModules();
     flattenTemplateEntries();
+    flattenLocalizedHtml();
 
     // ── Сохраняем manifest ───────────────────────────────────────
     // Делаем это ПОСЛЕ успешного переноса всех файлов и ДО cleanupTemp(),

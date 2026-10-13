@@ -113,6 +113,11 @@ private:
     /// прямо в 1С. Манифест сохраняет исходное имя элемента контейнера.
     bool flattenTemplateEntries();
 
+    /// Сохранить справку объектов и HTML-макеты файлами .html (по одному на
+    /// язык), чтобы их можно было открыть в браузере. Исходные байты элемента
+    /// остаются в манифесте — сборка неизменённого дерева не меняется.
+    bool flattenLocalizedHtml();
+
     QVector<ObjectGroup> m_groups_cache;
 
     UnpackManifest m_manifest;   

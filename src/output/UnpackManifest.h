@@ -30,12 +30,20 @@ struct ManifestEntry {
     // Заполняется, если данные вынесены отдельным файлом с расширением по виду
     // (табличный документ → .mxl), чтобы файл открывался прямо в 1С.
     QString templateKind;
+
+    // Локализованный HTML (справка объекта, HTML-макет): нагрузка элемента —
+    // структура {5,<N>,"<язык>",{#base64:<HTML>},...}, каждый язык сохранён
+    // отдельным файлом .html. localizedOriginal хранит исходные байты элемента,
+    // поэтому сборка неизменённого дерева даёт те же байты, даже если бы формат
+    // записи структуры отличался от платформенного.
+    QByteArray  localizedOriginal;
+    QStringList localizedFiles;   // .html по языкам, первый совпадает с diskPath
 };
 
 class UnpackManifest
 {
 public:
-    static constexpr int kCurrentVersion = 2;
+    static constexpr int kCurrentVersion = 3;
     static constexpr const char* kDirName  = ".e8unpack";
     static constexpr const char* kFileName = "manifest.json";
 

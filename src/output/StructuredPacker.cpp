@@ -342,6 +342,62 @@ bool StructuredPacker::packFromManifest()
                 formFile.close();
                 moduleFile.close();
             }
+        } else if (!e.localizedFiles.isEmpty()) {
+            // Справка/HTML-макет: на диске элемент представлен файлами .html по
+            // языкам. Если содержимое не менялось — берём исходные байты элемента
+            // (тогда контейнер получается побайтово прежним), иначе собираем
+            // структуру заново из файлов.
+            static const char bom[] = "\xef\xbb\xbf";
+
+            QVector<OneCText::LocalizedItem> original;
+            bool same = OneCText::parseLocalizedHtml(e.localizedOriginal, &original)
+                     && original.size() == e.localizedFiles.size();
+            if (same) {
+                for (int i = 0; i < original.size(); ++i) {
+                    QFile hf(QDir(m_inputDir).filePath(e.localizedFiles.at(i)));
+                    if (!hf.open(QIODevice::ReadOnly)) { same = false; break; }
+                    QByteArray current = hf.readAll();
+                    hf.close();
+                    // Редактор мог добавить или снять BOM — это не изменение данных.
+                    if (current.startsWith(bom)) current.remove(0, 3);
+                    QByteArray stored = original.at(i).data;
+                    if (stored.startsWith(bom)) stored.remove(0, 3);
+                    if (current != stored) { same = false; break; }
+                }
+            }
+
+            QByteArray payload;
+            if (same) {
+                payload = e.localizedOriginal;
+            } else {
+                QVector<OneCText::LocalizedItem> rebuilt;
+                rebuilt.reserve(e.localizedFiles.size());
+                for (int i = 0; i < e.localizedFiles.size(); ++i) {
+                    QFile hf(QDir(m_inputDir).filePath(e.localizedFiles.at(i)));
+                    OneCText::LocalizedItem item;
+                    item.lang = i < original.size()
+                              ? original.at(i).lang
+                              : QFileInfo(e.localizedFiles.at(i)).completeBaseName();
+                    if (hf.open(QIODevice::ReadOnly)) {
+                        item.data = hf.readAll();
+                        hf.close();
+                    }
+                    rebuilt.append(item);
+                }
+                payload = OneCText::buildLocalizedHtml(rebuilt);
+                qInfo() << "StructuredPacker: справка или HTML-макет изменены —"
+                           " собираю элемент заново:" << e.originalName;
+            }
+
+            QFile out(QString::fromStdWString(dst.wstring()));
+            if (!out.open(QIODevice::WriteOnly | QIODevice::Truncate)
+                || out.write(payload) != payload.size()) {
+                qWarning() << "StructuredPacker: не записать элемент справки:"
+                           << e.originalName;
+                e2 = boost::system::errc::make_error_code(boost::system::errc::io_error);
+            } else {
+                out.close();
+            }
         } else {
             // Составной элемент (каталог info+text) или обычный файл — в .tmp_pack
             // кладём ссылку, а не копию: байты этих файлов не переносятся.

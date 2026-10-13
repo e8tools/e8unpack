@@ -6,6 +6,8 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 #include <QString>
+#include <QByteArray>
+#include <QVector>
 
 namespace v8unpack {
 namespace OneCText {
@@ -35,6 +37,26 @@ QString toElement(const QString &value);
 /// Ведущий BOM (U+FEFF) — его нужно снимать до разбора и возвращать при записи.
 bool hasBom(const QString &text);
 QString stripBom(const QString &text);
+
+/// ─── Локализованные данные с HTML (справка объекта, HTML-макет) ───
+/// В контейнере такая нагрузка выглядит так:
+///
+///   <BOM>{5,<N>,"<язык>",\r\n{#base64:<HTML в base64>}<...,ещё языки>,0}
+///
+/// Так 1С хранит справку объектов и HTML-макеты. Данные каждого языка
+/// сохраняются на диск отдельным файлом .html, поэтому нужны обе операции:
+/// разобрать при распаковке и собрать обратно при упаковке.
+struct LocalizedItem {
+    QString    lang;   // "ru", "en", ...
+    QByteArray data;   // байты как в контейнере, вместе с BOM
+};
+
+/// Разобрать нагрузку. false — если это не такая структура либо хоть один
+/// язык не является base64 с HTML: тогда элемент не трогаем.
+bool parseLocalizedHtml(const QByteArray &raw, QVector<LocalizedItem> *items);
+
+/// Собрать нагрузку заново (когда содержимое .html правили).
+QByteArray buildLocalizedHtml(const QVector<LocalizedItem> &items);
 
 } // namespace OneCText
 } // namespace v8unpack
