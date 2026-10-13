@@ -364,6 +364,14 @@ int Inflate(const char* in_buf, char** out_buf, uint32_t in_len, uint32_t* out_l
  */
 extern int g_deflate_level;
 
+// Замер фаз (--timings): время, проведённое в сжатии и распаковке, и число вызовов.
+// Нужен, чтобы мерить прогоны без внешнего профилировщика.
+extern bool g_timings;
+extern double g_seconds_deflate;
+extern double g_seconds_inflate;
+extern unsigned long long g_calls_deflate;
+extern unsigned long long g_calls_inflate;
+
 /**
  * Пытается распаковать данные. В случае успеха перезаписывает в data.
  * @param data - данные

@@ -113,9 +113,22 @@ int usage(vector<string> &argv)
 	cout << "  -V[ERSION]" << endl;
 		cout << "  --verbose            диагностические сообщения (по умолчанию не печатаются)" << endl;
 		cout << "  --level N            уровень сжатия zlib 1..9 при сборке (по умолчанию 9 —" << endl;
+		cout << "  --timings            напечатать время, ушедшее на сжатие и распаковку" << endl;
 		cout << "                       максимальное сжатие; 6 примерно вдвое быстрее при +1 % размера)" << endl;
 
 	return 0;
+}
+
+// Отчёт --timings: сколько времени ушло в сжатие и распаковку. Внешний
+// профилировщик на сервере есть не всегда, а эти два числа отвечают на главный
+// вопрос «куда уходит время» на реальной конфигурации.
+static void print_timings()
+{
+	if (!g_timings)
+		return;
+	cout << "тайминги: сжатие " << g_seconds_deflate << " с (" << g_calls_deflate
+	     << " вызовов), распаковка " << g_seconds_inflate << " с (" << g_calls_inflate
+	     << " вызовов)" << endl;
 }
 
 int version(vector<string> &argv)
@@ -523,6 +536,18 @@ int main(int argc, char* argv[])
 		++i;
 	}
 
+	// Печать фазовых таймингов: --timings в любом месте командной строки.
+	for (size_t i = 0; i < args.size(); ) {
+		string option(args[i]);
+		transform(option.begin(), option.end(), option.begin(), ::tolower);
+		if (option == "--timings" || option == "-timings") {
+			g_timings = true;
+			args.erase(args.begin() + static_cast<ptrdiff_t>(i));
+		} else {
+			++i;
+		}
+	}
+
 	handler_t handler = get_run_mode(args, arg_base, allow_listfile);
 
 	vector<string> cli_args;
@@ -562,6 +587,7 @@ int main(int argc, char* argv[])
 			}
 		}
 
+		print_timings();
 		return ret;
 	}
 
@@ -569,5 +595,6 @@ int main(int argc, char* argv[])
 	if (ret == V8UNPACK_SHOW_USAGE) {
 		usage(cli_args);
 	}
+	print_timings();
 	return ret;
 }

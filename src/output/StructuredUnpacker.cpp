@@ -10,6 +10,8 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <unordered_set>
+#include <string>
 #include <QRegularExpression>
 #include <QSet>
 #include <QDebug>
@@ -609,19 +611,31 @@ bool StructuredUnpacker::extractFormModules()
         if (!info.isFile() || info.size() < 4)
             continue;
 
-        // Дешёвый отбор: описание формы начинается с "{4,".
+        // Отбор: описание формы начинается с "{4," (возможно, после BOM).
+        // Сначала читаем только начало файла: раньше здесь читался файл целиком
+        // на каждом члене контейнера — на большой конфигурации это гигабайты
+        // чтения ради проверки четырёх байт.
+        static const QByteArray kUtf8Bom = QByteArray::fromHex("efbbbf");
         QFile file(absPath);
+        if (!file.open(QIODevice::ReadOnly))
+            continue;
+        QByteArray head = file.read(16);
+        file.close();
+        const bool bom = head.startsWith(kUtf8Bom);
+        if (bom)
+            head.remove(0, 3);
+        if (!head.startsWith(QByteArrayLiteral("{4,")))
+            continue;
+
+        // Это описание формы — теперь читаем целиком.
         if (!file.open(QIODevice::ReadOnly))
             continue;
         QByteArray raw = file.readAll();
         file.close();
         // В начале файла может стоять BOM: запоминаем его и убираем из буфера,
         // чтобы он не мешал разбору и не потерялся при обратной записи.
-        const bool bom = raw.startsWith(QByteArray::fromHex("efbbbf"));
         if (bom)
             raw.remove(0, 3);
-        if (!raw.startsWith(QByteArrayLiteral("{4,")))
-            continue;
 
         const QString body = QString::fromUtf8(raw);
 
@@ -873,9 +887,31 @@ bool StructuredUnpacker::flattenLocalizedHtml()
     return true;
 }
 
+
+namespace {
+// create_directories проверяет всю цепочку родителей. При обходе десятков тысяч
+// членов это тысячи лишних обращений к индексам (в strace видно статистику по
+// /root, /root/workcpp, ...): на конфигурации из 403 членов — ~4600 вызовов.
+// Держим набор уже созданных каталогов. Набор — на процесс; если сборку/распаковку
+// когда-нибудь распараллелят, его нужно будет защитить или сделать на поток.
+std::unordered_set<std::wstring> g_createdDirs;
+
+bool ensureDirCached(const fs::path &dir)
+{
+    const std::wstring key = dir.wstring();
+    if (g_createdDirs.find(key) != g_createdDirs.end())
+        return true;
+    boost::system::error_code ec;
+    fs::create_directories(dir, ec);
+    g_createdDirs.insert(key);
+    return !ec;
+}
+} // namespace
+
 bool StructuredUnpacker::buildAndApplyPlan()
 {
     boost::system::error_code ec;
+    g_createdDirs.clear();
     const fs::path tempRoot(m_tempDir.toStdWString());      
     const fs::path targetRoot(m_outputDir.toStdWString());  
 
@@ -965,7 +1001,7 @@ bool StructuredUnpacker::buildAndApplyPlan()
 
     for (const auto& item : plan) {
         boost::system::error_code e2;
-        fs::create_directories(item.dst.parent_path(), e2);
+        ensureDirCached(item.dst.parent_path());
 
         fs::path actualDst = item.dst;
         bool     moved     = false;

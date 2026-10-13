@@ -9,6 +9,7 @@ at http://mozilla.org/MPL/2.0/.
 #include <iostream>
 #include "zlib.h"
 #include <boost/filesystem/fstream.hpp>
+#include <chrono>
 
 #define CHUNK 16384
 #ifndef DEF_MEM_LEVEL
@@ -26,6 +27,34 @@ namespace v8unpack {
 // совпадает с прежними версиями. Уровень 6 собирает примерно вдвое быстрее
 // при росте размера контейнера порядка 1 %. Задаётся опцией --level N.
 int g_deflate_level = Z_BEST_COMPRESSION;
+
+bool g_timings = false;
+double g_seconds_deflate = 0.0;
+double g_seconds_inflate = 0.0;
+unsigned long long g_calls_deflate = 0;
+unsigned long long g_calls_inflate = 0;
+
+namespace {
+// Секундомер для --timings: накапливает время внутри вызовов сжатия и распаковки.
+class Stopwatch {
+public:
+    explicit Stopwatch(bool enabled) : m_enabled(enabled)
+    {
+        if (m_enabled)
+            m_start = std::chrono::steady_clock::now();
+    }
+    void stop(double &accumulator, unsigned long long &counter) const
+    {
+        if (!m_enabled)
+            return;
+        accumulator += std::chrono::duration<double>(std::chrono::steady_clock::now() - m_start).count();
+        ++counter;
+    }
+private:
+    bool m_enabled;
+    std::chrono::steady_clock::time_point m_start;
+};
+} // namespace
 
 template<typename T, int length>
 T hex_to_int(const char *hextext)
@@ -180,6 +209,7 @@ int Deflate(std::istream &source, const std::string &out_filename)
 
 int Deflate(std::istream &source, std::ostream &dest)
 {
+	const Stopwatch sw(g_timings);
 
 	int ret, flush;
 	unsigned have;
@@ -232,12 +262,15 @@ int Deflate(std::istream &source, std::ostream &dest)
 
 	// clean up and return
 	(void)deflateEnd(&strm);
+	sw.stop(g_seconds_deflate, g_calls_deflate);
 	return Z_OK;
 
 }
 
 int Inflate(std::istream &source, std::ostream &dest)
 {
+	const Stopwatch sw(g_timings);
+
 	int ret;
 	unsigned have;
 	z_stream strm;
@@ -293,11 +326,14 @@ int Inflate(std::istream &source, std::ostream &dest)
 
 	// clean up and return
 	(void)inflateEnd(&strm);
+	sw.stop(g_seconds_inflate, g_calls_inflate);
 	return ret == Z_STREAM_END ? Z_OK : Z_DATA_ERROR;
 }
 
 int Inflate(const char* in_buf, char** out_buf, uint32_t in_len, uint32_t* out_len)
 {
+	const Stopwatch sw(g_timings);
+
 	int ret;
 	unsigned have;
 	z_stream strm;
@@ -353,11 +389,14 @@ int Inflate(const char* in_buf, char** out_buf, uint32_t in_len, uint32_t* out_l
 
 	// clean up and return
 	(void)inflateEnd(&strm);
+	sw.stop(g_seconds_inflate, g_calls_inflate);
 	return ret == Z_STREAM_END ? Z_OK : Z_DATA_ERROR;
 }
 
 int Deflate(const char* in_buf, char** out_buf, uint32_t in_len, uint32_t* out_len)
 {
+	const Stopwatch sw(g_timings);
+
 	int ret, flush;
 	unsigned have;
 	z_stream strm;
@@ -408,6 +447,7 @@ int Deflate(const char* in_buf, char** out_buf, uint32_t in_len, uint32_t* out_l
 
 	// clean up and return
 	(void)deflateEnd(&strm);
+	sw.stop(g_seconds_deflate, g_calls_deflate);
 	return Z_OK;
 
 }

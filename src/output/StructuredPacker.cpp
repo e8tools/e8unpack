@@ -10,6 +10,8 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <unordered_set>
+#include <string>
 #include <QDebug>
 #include <QRegularExpression>
 #include <QSet>
@@ -85,9 +87,31 @@ static void linkOrCopy(const fs::path& src, const fs::path& dst,
     }
 }
 
+
+namespace {
+// create_directories проверяет всю цепочку родителей. При обходе десятков тысяч
+// членов это тысячи лишних обращений к индексам (в strace видно статистику по
+// /root, /root/workcpp, ...): на конфигурации из 403 членов — ~4600 вызовов.
+// Держим набор уже созданных каталогов. Набор — на процесс; если сборку/распаковку
+// когда-нибудь распараллелят, его нужно будет защитить или сделать на поток.
+std::unordered_set<std::wstring> g_createdDirs;
+
+bool ensureDirCached(const fs::path &dir)
+{
+    const std::wstring key = dir.wstring();
+    if (g_createdDirs.find(key) != g_createdDirs.end())
+        return true;
+    boost::system::error_code ec;
+    fs::create_directories(dir, ec);
+    g_createdDirs.insert(key);
+    return !ec;
+}
+} // namespace
+
 bool StructuredPacker::flattenToTemp()
 {
     boost::system::error_code ec;
+    g_createdDirs.clear();
     fs::remove_all(m_tempDir.toStdWString(), ec);          // ✅
     fs::create_directories(m_tempDir.toStdWString(), ec);  // ✅
 
@@ -260,7 +284,7 @@ bool StructuredPacker::packFromManifest()
         }
 
         // Создаём подкаталоги, если originalName вдруг содержит '/'
-        fs::create_directories(dst.parent_path(), e2);
+        ensureDirCached(dst.parent_path());
 
         e2.clear();
         if (!e.moduleKind.isEmpty()) {

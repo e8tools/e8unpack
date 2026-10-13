@@ -20,6 +20,9 @@ at http://mozilla.org/MPL/2.0/.
 #include "VersionFile.h"
 #include <iostream>
 #include <sstream>
+#include <cstdlib>
+#include <cstring>
+#include <vector>
 #include <boost/iostreams/device/array.hpp>
 #include <boost/iostreams/stream.hpp>
 #include <utility>
@@ -175,8 +178,12 @@ ReadBlockData(basic_istream<char> &file, const typename format::block_header_t &
 	auto Header = firstBlockHeader;
 	auto pBlockHeader = &Header;
 
-	const int buf_size = 1024; // TODO: Настраиваемый размер буфера
-	char *pBlockData = new char[buf_size];
+	// Крупные порции чтения вместо буфера 1 КБ, который ещё и аллоцировался
+	// на каждый вызов: на конфигурации из 78 844 членов это десятки тысяч
+	// мелких чтений и столько же пар new/delete[].
+	thread_local vector<char> read_buffer(1u << 20);
+	char *const pBlockData = read_buffer.data();
+	const size_t buf_size = read_buffer.size();
 
 	read_in_bytes = 0;
 	while (read_in_bytes < data_size) {
@@ -187,8 +194,9 @@ ReadBlockData(basic_istream<char> &file, const typename format::block_header_t &
 
 		uint32_t read_done = 0;
 		while (read_done < bytes_to_read) {
-			file.read(pBlockData, MIN(buf_size, bytes_to_read - read_done));
-			uint32_t rd = file.gcount();
+			const size_t chunk = MIN(buf_size, static_cast<size_t>(bytes_to_read - read_done));
+			file.read(pBlockData, static_cast<streamsize>(chunk));
+			const uint32_t rd = static_cast<uint32_t>(file.gcount());
 			out.write(pBlockData, rd);
 			read_done += rd;
 		}
@@ -202,8 +210,6 @@ ReadBlockData(basic_istream<char> &file, const typename format::block_header_t &
 		else
 			break;
 	}
-
-	delete[] pBlockData;
 
 	return V8UNPACK_OK;
 }
@@ -272,6 +278,18 @@ SafeReadBlockData(in_stream_t &file, out_stream_t &out)
 	return SafeReadBlockData<format>(file, out, data_size);
 }
 
+// Запись выравнивания блока. Раньше это был побайтовый вывод `file_out << '\\0'`
+// (по одному вызову потока на каждый байт), на 78 844 членах это заметно.
+static void write_zeros(basic_ostream<char> &out, size_t count)
+{
+	static const char zeros[4096] = {};
+	while (count) {
+		const size_t n = count < sizeof(zeros) ? count : sizeof(zeros);
+		out.write(zeros, static_cast<streamsize>(n));
+		count -= n;
+	}
+}
+
 template<typename format>
 static
 int SaveBlockDataToBuffer(char *&cur_pos, const char *pBlockData, uint32_t BlockDataSize, uint32_t PageSize = format::DEFAULT_PAGE_SIZE)
@@ -286,9 +304,10 @@ int SaveBlockDataToBuffer(char *&cur_pos, const char *pBlockData, uint32_t Block
 	memcpy(cur_pos, pBlockData, BlockDataSize);
 	cur_pos += BlockDataSize;
 
-	for(uint32_t i = 0; i < PageSize - BlockDataSize; i++) {
-		*cur_pos = 0;
-		++cur_pos;
+	if (PageSize > BlockDataSize) {
+		const size_t padding = PageSize - BlockDataSize;
+		memset(cur_pos, 0, padding);
+		cur_pos += padding;
 	}
 
 	return 0;
@@ -306,9 +325,7 @@ int SaveBlockData(basic_ostream<char> &file_out, const vector<char> &data, size_
 	file_out.write(data.data(), BlockDataSize);
 
 	if (PageSize > BlockDataSize) {
-		for (auto i = PageSize - BlockDataSize; i; i--) {
-			file_out << '\0';
-		}
+		write_zeros(file_out, PageSize - BlockDataSize);
 	}
 
 	return V8UNPACK_OK;
@@ -325,9 +342,7 @@ int SaveBlockData(basic_ostream<char> &file_out, basic_istream<char> &file_in, s
 	full_copy(file_in, file_out);
 
 	if (PageSize > BlockDataSize) {
-		for (auto i = PageSize - BlockDataSize; i; i--) {
-			file_out << '\0';
-		}
+		write_zeros(file_out, PageSize - BlockDataSize);
 	}
 
 	return V8UNPACK_OK;
@@ -355,9 +370,7 @@ int SaveBlockData(basic_ostream<char> &file_out, const char *pBlockData, size_t 
 	file_out.write(reinterpret_cast<const char *>(pBlockData), BlockDataSize);
 
 	if (PageSize > BlockDataSize) {
-		for (auto i = PageSize - BlockDataSize; i; i--) {
-			file_out << '\0';
-		}
+		write_zeros(file_out, PageSize - BlockDataSize);
 	}
 
 	return V8UNPACK_OK;
@@ -1021,7 +1034,7 @@ int CV8File::LoadFileFromFolder(const string &dirname)
 
 		CV8Elem elem(to_utf8(current_file.filename()));
 
-		if (boost::filesystem::is_directory(current_file)) {
+		if (dit->is_directory()) { // тип уже известен записи каталога
 
 			elem.IsV8File = true;
 
@@ -1115,7 +1128,7 @@ recursive_pack(const string &in_dirname, const string &out_filename, bool dont_d
 		pTOC[ElemNum].elem_data_addr = file_out.tellp() - format::BASE_OFFSET;
 		pTOC[ElemNum].fffffff = format::UNDEFINED_VALUE;
 
-		if (boost::filesystem::is_directory(current_file)) {
+		if (dit->is_directory()) { // тип уже известен записи каталога
 
 			pElem.IsV8File = true;
 
@@ -1257,7 +1270,7 @@ int CV8Elem::Pack(bool deflate)
 			data.resize(DeflateSize);
 			memcpy(data.data(), DeflateBuffer, DeflateSize);
 
-			delete [] DeflateBuffer;
+			free(DeflateBuffer);
 		}
 
 	} else {
@@ -1278,7 +1291,7 @@ int CV8Elem::Pack(bool deflate)
 			data.resize(DeflateSize);
 			memcpy(data.data(), DeflateBuffer, DeflateSize);
 
-			delete [] DeflateBuffer;
+			free(DeflateBuffer);
 
 		}
 
@@ -1343,7 +1356,7 @@ int CV8File::GetData(vector<char> &data)
 	SaveBlockDataToBuffer<format>(cur_pos, (char*) pTempElemsAddrs.data(), format::elem_addr_t::Size() * ElemsNum);
 
 	// записываем элементы (заголовок и данные)
-	for (auto elem : Elems) {
+	for (const auto &elem : Elems) {
 		SaveBlockDataToBuffer<format>(cur_pos, elem.header.data(), elem.header.size(), elem.header.size());
 		SaveBlockDataToBuffer<format>(cur_pos, elem.data.data(), elem.data.size());
 	}
