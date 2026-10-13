@@ -28,6 +28,7 @@ at http://mozilla.org/MPL/2.0/.
 #include <utility>
 #include <memory>
 #include <boost/filesystem/fstream.hpp>
+#include <boost/version.hpp>
 #include <QDebug>
 #include <QString>
 #include "metadata/MetadataMap.h"
@@ -1034,7 +1035,12 @@ int CV8File::LoadFileFromFolder(const string &dirname)
 
 		CV8Elem elem(to_utf8(current_file.filename()));
 
-		if (dit->is_directory()) { // тип уже известен записи каталога
+		// Тип берём из записи каталога, см. комментарий в recursive_pack.
+#if BOOST_VERSION >= 107900
+		if (dit->is_directory()) {
+#else
+		if (boost::filesystem::is_directory(dit->status())) {
+#endif
 
 			elem.IsV8File = true;
 
@@ -1128,7 +1134,14 @@ recursive_pack(const string &in_dirname, const string &out_filename, bool dont_d
 		pTOC[ElemNum].elem_data_addr = file_out.tellp() - format::BASE_OFFSET;
 		pTOC[ElemNum].fffffff = format::UNDEFINED_VALUE;
 
-		if (dit->is_directory()) { // тип уже известен записи каталога
+		// Тип берём из записи каталога: свободная функция is_directory(path)
+		// делает отдельный stat. directory_entry::is_directory() есть с Boost 1.79,
+		// в CI стоит 1.74 — там берём статус, уже прочитанный обходом.
+#if BOOST_VERSION >= 107900
+		if (dit->is_directory()) {
+#else
+		if (boost::filesystem::is_directory(dit->status())) {
+#endif
 
 			pElem.IsV8File = true;
 
