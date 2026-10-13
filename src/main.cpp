@@ -112,6 +112,8 @@ int usage(vector<string> &argv)
 	cout << "  -BAT" << endl;
 	cout << "  -V[ERSION]" << endl;
 		cout << "  --verbose            диагностические сообщения (по умолчанию не печатаются)" << endl;
+		cout << "  --level N            уровень сжатия zlib 1..9 при сборке (по умолчанию 9 —" << endl;
+		cout << "                       максимальное сжатие; 6 примерно вдвое быстрее при +1 % размера)" << endl;
 
 	return 0;
 }
@@ -493,6 +495,33 @@ int main(int argc, char* argv[])
 		verbose = verbose || (!value.empty() && value != "0");
 	}
 	g_verbose.store(verbose, std::memory_order_relaxed);
+
+	// Уровень сжатия zlib: --level N (1..9). По умолчанию 9 — историческое
+	// значение v8unpack, при нём сборка остаётся байт-в-байт прежней.
+	// Опцию и её значение убираем из аргументов, чтобы они не попали в разбор режима.
+	for (size_t i = 0; i < args.size(); ) {
+		string option(args[i]);
+		transform(option.begin(), option.end(), option.begin(), ::tolower);
+		if (option == "--level" || option == "-level") {
+			size_t eaten = 1;
+			if (i + 1 < args.size()) {
+				const int level = atoi(args[i + 1].c_str());
+				eaten = 2;
+				if (level >= 1 && level <= 9) {
+					g_deflate_level = level;
+				} else {
+					cerr << "v8unpack: уровень сжатия должен быть 1..9, получено \""
+					     << args[i + 1] << "\" — оставляю " << g_deflate_level << endl;
+				}
+			} else {
+				cerr << "v8unpack: после --level нужен уровень сжатия (1..9)" << endl;
+			}
+			args.erase(args.begin() + static_cast<ptrdiff_t>(i),
+			           args.begin() + static_cast<ptrdiff_t>(i + eaten));
+			continue;
+		}
+		++i;
+	}
 
 	handler_t handler = get_run_mode(args, arg_base, allow_listfile);
 

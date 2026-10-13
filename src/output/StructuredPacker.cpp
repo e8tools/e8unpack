@@ -55,6 +55,36 @@ static bool isGuidLike(const QString& name)
     return re.match(name).hasMatch();
 }
 
+// Кладём в .tmp_pack жёсткую ссылку вместо копии байтов: сборщик контейнера
+// (.tmp_pack -> BuildCfFile) только читает эти файлы, а исходное дерево
+// остаётся нетронутым. На больших конфигурациях это убирает перекачку
+// нескольких гигабайт на каждой сборке; если ссылку создать нельзя
+// (другая файловая система, отсутствие поддержки) — обычное копирование.
+static void linkOrCopy(const fs::path& src, const fs::path& dst,
+                       boost::system::error_code& ec)
+{
+    ec.clear();
+
+    if (fs::is_directory(src, ec)) {
+        ec.clear();
+        fs::create_directories(dst, ec);
+        if (ec)
+            return;
+        fs::directory_iterator it(src, ec), end;
+        for (; !ec && it != end; it.increment(ec)) {
+            linkOrCopy(it->path(), dst / it->path().filename(), ec);
+        }
+        return;
+    }
+
+    ec.clear();
+    fs::create_hard_link(src, dst, ec);
+    if (ec) {
+        ec.clear();
+        fs::copy_file(src, dst, fs::copy_options::overwrite_existing, ec);
+    }
+}
+
 bool StructuredPacker::flattenToTemp()
 {
     boost::system::error_code ec;
@@ -108,7 +138,7 @@ bool StructuredPacker::flattenToTemp()
             dst = alt;
         }
 
-        fs::copy_file(src, dst, fs::copy_options::overwrite_existing, ec);
+        linkOrCopy(src, dst, ec);
         if (!ec) {
             ++copied;
             if (isService) {
@@ -312,11 +342,10 @@ bool StructuredPacker::packFromManifest()
                 formFile.close();
                 moduleFile.close();
             }
-        } else if (fs::is_directory(src, e2)) {
-            // Compound entry: recursively copy its info + text directory.
-            fs::copy(src, dst, fs::copy_options::recursive | fs::copy_options::overwrite_existing, e2);
         } else {
-            fs::copy_file(src, dst, fs::copy_options::overwrite_existing, e2);
+            // Составной элемент (каталог info+text) или обычный файл — в .tmp_pack
+            // кладём ссылку, а не копию: байты этих файлов не переносятся.
+            linkOrCopy(src, dst, e2);
         }
         
         if (e2) {

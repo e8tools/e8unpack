@@ -355,6 +355,16 @@ int Deflate(const char* in_buf, char** out_buf, uint32_t in_len, uint32_t* out_l
 int Inflate(const char* in_buf, char** out_buf, uint32_t in_len, uint32_t* out_len);
 
 /**
+ * Уровень сжатия zlib для deflate (1..9).
+ *
+ * По умолчанию 9 (Z_BEST_COMPRESSION) — историческое значение v8unpack: при нём
+ * собранный контейнер байт-в-байт совпадает с прежними версиями инструмента, и
+ * на это опирается регрессионная проверка по sha256. Меняется опцией --level;
+ * уровень 6 собирает примерно вдвое быстрее при росте размера на ~1 %.
+ */
+extern int g_deflate_level;
+
+/**
  * Пытается распаковать данные. В случае успеха перезаписывает в data.
  * @param data - данные
  * @return true - если данные были успешно распакованы

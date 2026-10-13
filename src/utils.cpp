@@ -21,6 +21,12 @@ at http://mozilla.org/MPL/2.0/.
 
 namespace v8unpack {
 
+// Уровень сжатия zlib для deflate (1..9). По умолчанию 9 (Z_BEST_COMPRESSION):
+// историческое значение v8unpack, при нём сборка контейнера байт-в-байт
+// совпадает с прежними версиями. Уровень 6 собирает примерно вдвое быстрее
+// при росте размера контейнера порядка 1 %. Задаётся опцией --level N.
+int g_deflate_level = Z_BEST_COMPRESSION;
+
 template<typename T, int length>
 T hex_to_int(const char *hextext)
 {
@@ -186,7 +192,7 @@ int Deflate(std::istream &source, std::ostream &dest)
 	strm.zfree = Z_NULL;
 	strm.opaque = Z_NULL;
 
-	ret = deflateInit2(&strm, Z_BEST_COMPRESSION, Z_DEFLATED, -MAX_WBITS, DEF_MEM_LEVEL, Z_DEFAULT_STRATEGY);
+	ret = deflateInit2(&strm, g_deflate_level, Z_DEFLATED, -MAX_WBITS, DEF_MEM_LEVEL, Z_DEFAULT_STRATEGY);
 
 	if (ret != Z_OK)
 		return ret;
@@ -365,7 +371,7 @@ int Deflate(const char* in_buf, char** out_buf, uint32_t in_len, uint32_t* out_l
 	strm.zalloc = Z_NULL;
 	strm.zfree = Z_NULL;
 	strm.opaque = Z_NULL;
-	ret = deflateInit2(&strm, Z_BEST_COMPRESSION, Z_DEFLATED, -MAX_WBITS, DEF_MEM_LEVEL, Z_DEFAULT_STRATEGY);
+	ret = deflateInit2(&strm, g_deflate_level, Z_DEFLATED, -MAX_WBITS, DEF_MEM_LEVEL, Z_DEFAULT_STRATEGY);
 
 	if (ret != Z_OK)
 		return ret;
